@@ -25,6 +25,9 @@ export default function ExtractPage() {
   const [status, setStatus] = useState<string>("")
   const [running, setRunning] = useState<boolean>(false)
   const [output, setOutput] = useState<string>("(no output yet)")
+  const [segConc, setSegConc] = useState<number>(4)
+  const [canonConc, setCanonConc] = useState<number>(4)
+  const [segRetries, setSegRetries] = useState<number>(3)
 
   const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files && e.target.files[0] ? e.target.files[0] : null
@@ -64,6 +67,10 @@ export default function ExtractPage() {
         timeoutMs: Number(timeoutMs || 45000),
         verbose,
         deterministic: false,
+        // Tuning knobs for server to override env-based defaults
+        segConc: Number(segConc),
+        canonConc: Number(canonConc),
+        segRetries: Number(segRetries),
       }
 
       const resp = await fetch("/api/extract", {
@@ -73,21 +80,34 @@ export default function ExtractPage() {
       })
 
       const data = await resp.json().catch(() => ({}))
-      if (!resp.ok || (data && data.ok === false)) {
+      // Always show raw server output
+      setOutput(JSON.stringify(data, null, 2))
+      if (!resp.ok) {
         setStatus("Error")
-        setOutput(JSON.stringify(data, null, 2))
         return
       }
 
-      setStatus("Done")
-      setOutput(JSON.stringify(data, null, 2))
+      // Treat ok=false with payload as partial success
+      const segCount = Array.isArray(data?.segments) ? data.segments.length : 0
+      const paCount = Array.isArray(data?.data) ? data.data.length : 0
+      const errCount = Array.isArray(data?.errors) ? data.errors.length : 0
+      if (data && data.ok === false) {
+        if (segCount || paCount) {
+          setStatus(`Partial success: ${paCount} plays from ${segCount} segments. ${errCount} errors.`)
+        } else {
+          setStatus(`Error${errCount ? `: ${errCount} errors` : ""}`)
+        }
+        return
+      }
+
+      setStatus(errCount ? `Done with ${errCount} warnings` : "Done")
     } catch (e: any) {
       setStatus("Error")
       setOutput(String(e?.message || e))
     } finally {
       setRunning(false)
     }
-  }, [file, model, readTextFromFile, segMode, text, timeoutMs, verbose])
+  }, [file, model, readTextFromFile, segMode, text, timeoutMs, verbose, segConc, canonConc, segRetries])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black text-amber-50">
@@ -128,6 +148,21 @@ export default function ExtractPage() {
                 <div className="space-y-1">
                   <Label htmlFor="timeout">Timeout (ms)</Label>
                   <Input id="timeout" type="number" min={5000} step={1000} value={timeoutMs} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTimeoutMs(Number(e.target.value))} className="w-[180px]" />
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="segConc">Seg workers</Label>
+                  <Input id="segConc" type="number" min={1} step={1} value={segConc} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSegConc(Number(e.target.value))} className="w-[140px]" />
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="canonConc">Canon workers</Label>
+                  <Input id="canonConc" type="number" min={1} step={1} value={canonConc} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCanonConc(Number(e.target.value))} className="w-[140px]" />
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="segRetries">Seg retries</Label>
+                  <Input id="segRetries" type="number" min={1} step={1} value={segRetries} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSegRetries(Number(e.target.value))} className="w-[140px]" />
                 </div>
 
                 <div className="flex items-center gap-2 pt-6">

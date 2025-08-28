@@ -2,6 +2,7 @@ import { completeJSON } from "../llm.js";
 import type { GameContext, PlateAppearanceCanonical } from "./types.js";
 import { canonicalizePlateAppearance } from "./canonicalizer.js";
 import { toMinimalCanonicalFromText } from "./cards.js";
+import { createHash } from "node:crypto";
 
 function extractJSON(text: string): any {
   try {
@@ -41,23 +42,60 @@ function extractNamesFromText(s: string): { batter?: string; pitcher?: string } 
     "flies out",
     "lines out",
   ].join("|");
+  const batterCues = [
+    "batting",
+    "at bat",
+    "at the plate",
+    "to bat",
+    "steps in",
+    "leading off",
+    "leads off",
+    "now batting",
+    "to the plate",
+  ].join("|");
   const spacedNameRe = new RegExp(`\\b${nameToken}\\b\\s+(?:${verbs})`, "i");
   const compactNameRe = new RegExp(`\\b${initialsPair}\\b\\s+(?:${verbs})`, "i");
   const pitcherSpaced = new RegExp(`\\b${nameToken}\\b\\s+pitching`, "i");
   const pitcherCompact = new RegExp(`\\b${initialsPair}\\b\\s+pitching`, "i");
+  // Name followed by batter cue
+  const spacedNameCue = new RegExp(`\\b${nameToken}\\b\\s+(?:${batterCues})`, "i");
+  const compactNameCue = new RegExp(`\\b${initialsPair}\\b\\s+(?:${batterCues})`, "i");
+  // Cue then name (e.g., "Now batting: J M" or "Batting: John Smith")
+  const cueThenSpaced = new RegExp(`(?:now batting|batting)[:]?-?\\s+${nameToken}\\b`, "i");
+
+  // Support full names (e.g., "John Miller strikes out" or "John Miller pitching")
+  // Allow letters, apostrophes, hyphens, and periods within name tokens.
+  const fullName = "([A-Za-z][A-Za-z'.-]{1,})\\s+([A-Za-z][A-Za-z'.-]{1,})";
+  const fullNameRe = new RegExp(`\\b${fullName}\\b\\s+(?:${verbs})`, "i");
+  const pitcherFullName = new RegExp(`\\b${fullName}\\b\\s+pitching`, "i");
+  const fullNameCue = new RegExp(`\\b${fullName}\\b\\s+(?:${batterCues})`, "i");
+  const cueThenFullName = new RegExp(`(?:now batting|batting)[:]?-?\\s+${fullName}\\b`, "i");
   const t = s.replace(/\s+/g, " ").trim();
   let batter: string | undefined;
-  let m = t.match(spacedNameRe) || t.match(compactNameRe);
+  // Try full name first, normalize to initials
+  let m =
+    t.match(fullNameRe) ||
+    t.match(fullNameCue) ||
+    t.match(spacedNameRe) ||
+    t.match(compactNameRe) ||
+    t.match(spacedNameCue) ||
+    t.match(compactNameCue) ||
+    t.match(cueThenFullName) ||
+    t.match(cueThenSpaced);
   if (m) {
-    const a = (m[1] || "").toUpperCase();
-    const b = (m[2] || "").toUpperCase();
+    const aRaw = (m[1] || "");
+    const bRaw = (m[2] || "");
+    const a = aRaw.charAt(0).toUpperCase();
+    const b = bRaw.charAt(0).toUpperCase();
     if (a && b) batter = `${a} ${b}`;
   }
   let pitcher: string | undefined;
-  let mp = t.match(pitcherSpaced) || t.match(pitcherCompact);
+  let mp = t.match(pitcherFullName) || t.match(pitcherSpaced) || t.match(pitcherCompact);
   if (mp) {
-    const a = (mp[1] || "").toUpperCase();
-    const b = (mp[2] || "").toUpperCase();
+    const aRaw = (mp[1] || "");
+    const bRaw = (mp[2] || "");
+    const a = aRaw.charAt(0).toUpperCase();
+    const b = bRaw.charAt(0).toUpperCase();
     if (a && b) pitcher = `${a} ${b}`;
   }
   return { batter, pitcher };
@@ -113,10 +151,16 @@ export function deterministicSegment(raw: string): string[] {
   text = text.replace(/\|/g, ". ");
   // Make sure lineup changes are their own token
   text = text.replace(/\s+(Lineup changed:)/g, ". $1");
-  text = text.replace(/\s+/g, " ").trim();
+  // Preserve newlines to avoid collapsing multiple PAs into a single token.
+  // Normalize whitespace per line, then rejoin with newlines so line boundaries remain available for tokenization.
+  text = text
+    .split("\n")
+    .map((ln) => ln.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
 
-  // Split by sentences on period/question/exclamation keeping boundaries
-  const tokens = text.split(/(?<=[.!?])\s+/);
+  // Split by sentence boundaries OR newline boundaries (many logs separate PAs by newlines)
+  const tokens = text.split(/(?<=[.!?])\s+|\n+/);
 
   const segments: string[] = [];
   let current = "";
@@ -132,12 +176,16 @@ export function deterministicSegment(raw: string): string[] {
   const isPitcherChange = (t: string) => /Lineup changed:\s*.*?in at pitcher/i.test(t);
 
   const typeLed = /^(Strikeout|Fly Out|Ground Out|Line Out|Walk|Hit By Pitch|Single|Double|Triple|Home Run|Reach(?:es)? on Error)\b/i;
-  const nameLed = /^\s*[A-Z]{1,2}\s+[A-Z]{1,2}\s+(strikes out|walks|grounds out|flies out|lines out|doubles|triples|singles|homers|is hit by pitch|reaches on error)/i;
+  const verbPart = /(strikes out|walks|grounds out|flies out|lines out|doubles|triples|singles|homers|is hit by pitch|reaches on error)/i;
+  const cuePart = /(batting|at bat|at the plate|to bat|steps in|leading off|leads off|now batting)/i;
+  const nameLed = /^\s*[A-Z]{1,2}\s+[A-Z]{1,2}\s+(?:strikes out|walks|grounds out|flies out|lines out|doubles|triples|singles|homers|is hit by pitch|reaches on error|batting|at bat|at the plate|to bat|steps in|leading off|leads off|now batting)/i;
+  const cueStart = /^\s*(Now batting|Batting)\b/i;
   const inPlay = /^\s*In play\b/i;
 
   const startOfPA = (t: string, haveCurrent: boolean) => {
     if (typeLed.test(t)) return true;
     if (nameLed.test(t)) return true;
+    if (cueStart.test(t)) return true;
     if (!haveCurrent && inPlay.test(t)) return true;
     return false;
   };
@@ -185,11 +233,39 @@ export function deterministicSegment(raw: string): string[] {
     const start = isType || isName || (!current && inPlay.test(t));
     if (start) {
       if (current) {
-        // If this is a name-led description immediately following a summary token (or 'In play'), merge into current
-        const currentSummarized = /^(Strikeout|Fly Out|Ground Out|Line Out|Walk|Hit By Pitch|Single|Double|Triple|Home Run)/i.test(current) || /\bIn play\b/i.test(current);
+        // If this is a name-led description immediately following a summary token, merge into current.
+        // Note: Do NOT merge solely due to presence of 'In play' inside the current token; that can belong to pitch sequence
+        // and would incorrectly glue a new PA onto the previous one.
+        const currentSummarized = typeLed.test(current);
         if (isName && currentSummarized) {
-          current += ` ${pendingPitcherNote ? pendingPitcherNote + " " : ""}${t}`;
-          pendingPitcherNote = "";
+          // Only merge if the name-led token describes the SAME event as the summary type.
+          // Derive expected verb from the summary type (e.g., "Strikeout" => "strikes out").
+          const tm = current.match(/^(Strikeout|Fly Out|Ground Out|Line Out|Walk|Hit By Pitch|Single|Double|Triple|Home Run|Reach(?:es)? on Error)\b/i);
+          const typeWord = tm ? tm[1].toLowerCase() : "";
+          const typeToVerb: Record<string, string> = {
+            "strikeout": "strikes out",
+            "fly out": "flies out",
+            "ground out": "grounds out",
+            "line out": "lines out",
+            "walk": "walks",
+            "hit by pitch": "is hit by pitch",
+            "single": "singles",
+            "double": "doubles",
+            "triple": "triples",
+            "home run": "homers",
+            "reach on error": "reaches on error",
+            "reaches on error": "reaches on error",
+          };
+          const expectedVerb = typeToVerb[typeWord] || "";
+          const samePlay = expectedVerb ? new RegExp(`\\b${expectedVerb}\\b`, "i").test(t) : false;
+          if (samePlay) {
+            current += ` ${pendingPitcherNote ? pendingPitcherNote + " " : ""}${t}`;
+            pendingPitcherNote = "";
+          } else {
+            segments.push(current.trim());
+            current = pendingPitcherNote ? `${pendingPitcherNote} ${t}` : t;
+            pendingPitcherNote = "";
+          }
         } else {
           segments.push(current.trim());
           current = "";
@@ -222,10 +298,11 @@ export function deterministicSegment(raw: string): string[] {
 
 export async function segmentGameText(
   rawGameText: string,
-  options: { model?: string; maxRetries?: number; segmentationMode?: "det" | "llm" | "hybrid"; transportTimeoutMs?: number; verbose?: boolean } = {}
+  options: { model?: string; maxRetries?: number; segmentationMode?: "det" | "llm" | "hybrid"; transportTimeoutMs?: number; verbose?: boolean; segmentationConcurrency?: number } = {}
 ): Promise<string[]> {
   const { model = "gpt-5-mini", maxRetries = 2, segmentationMode = "hybrid", transportTimeoutMs, verbose } = options;
   const timeout = typeof transportTimeoutMs === "number" ? transportTimeoutMs : Number(process.env.OPENAI_TIMEOUT_MS ?? "45000");
+  const segConcOpt = Math.max(1, Number((options as any).segmentationConcurrency ?? process.env.GS_SEG_LLM_CONCURRENCY ?? 2));
 
   // Helper: LLM segmentation
   const llmSegment = async (text: string, previous?: string[]): Promise<string[]> => {
@@ -303,30 +380,48 @@ export async function segmentGameText(
         }
         if (buf) rawChunks.push(buf);
         if (rawChunks.length > 1) {
-          const merged: string[] = [];
-          for (let i = 0; i < rawChunks.length; i++) {
-            const chunkText = rawChunks[i];
-            if (verbose) console.error(`[segmentGameText] Fallback chunk ${i + 1}/${rawChunks.length} (char-based)`);
-            const segs = await callOne(chunkText, 0);
-            merged.push(...segs);
-          }
-          return merged;
+          const segConc = segConcOpt;
+          const results: string[][] = new Array(rawChunks.length);
+          let next = 0;
+          const worker = async () => {
+            while (true) {
+              const i = next++;
+              if (i >= rawChunks.length) break;
+              const chunkText = rawChunks[i];
+              if (verbose) console.error(`[segmentGameText] Fallback chunk ${i + 1}/${rawChunks.length} (char-based)`);
+              const segs = await callOne(chunkText, 0);
+              results[i] = segs && segs.length ? segs : deterministicSegment(chunkText);
+            }
+          };
+          const workers = Array.from({ length: Math.min(segConc, rawChunks.length) }, () => worker());
+          await Promise.all(workers);
+          return results.flat();
         }
       }
-      // Single call as final fallback
-      return await callOne(text, detBase.length);
+      // Single call as final fallback, then ensure non-empty by falling back to deterministic
+      const one = await callOne(text, detBase.length);
+      return one && one.length ? one : detBase;
     }
 
-    // Otherwise, process groups sequentially and merge
-    const merged: string[] = [];
-    for (let gi = 0; gi < groups.length; gi++) {
-      const g = groups[gi];
-      const chunkText = g.join(" \n");
-      if (verbose) console.error(`[segmentGameText] Processing chunk ${gi + 1}/${groups.length} with ${g.length} baseline segments`);
-      const segs = await callOne(chunkText, g.length);
-      merged.push(...segs);
-    }
-    return merged;
+    // Otherwise, process groups with limited parallelism and preserve order
+    const segConc = segConcOpt;
+    const results: string[][] = new Array(groups.length);
+    let next = 0;
+    const worker = async () => {
+      while (true) {
+        const gi = next++;
+        if (gi >= groups.length) break;
+        const g = groups[gi];
+        const chunkText = g.join(" \n");
+        if (verbose) console.error(`[segmentGameText] Processing chunk ${gi + 1}/${groups.length} with ${g.length} baseline segments`);
+        const segs = await callOne(chunkText, g.length);
+        // If LLM returns empty, fall back to baseline deterministic segments for this chunk
+        results[gi] = segs && segs.length ? segs : g;
+      }
+    };
+    const workers = Array.from({ length: Math.min(segConc, groups.length) }, () => worker());
+    await Promise.all(workers);
+    return results.flat();
   };
 
   // Deterministic first
@@ -346,15 +441,37 @@ export async function segmentGameText(
 
   // Post-merge: join a summary-led segment immediately followed by a name-led segment (same play context)
   const typeLed = /^(Strikeout|Fly Out|Ground Out|Line Out|Walk|Hit By Pitch|Single|Double|Triple|Home Run|Reach(?:es)? on Error)\b/i;
-  const nameLed = /^\s*[A-Z]{1,2}\s+[A-Z]{1,2}\s+(strikes out|walks|grounds out|flies out|lines out|doubles|triples|singles|homers|is hit by pitch|reaches on error)/i;
+  const nameLed = /^\s*[A-Z]{1,2}\s+[A-Z]{1,2}\s+(?:strikes out|walks|grounds out|flies out|lines out|doubles|triples|singles|homers|is hit by pitch|reaches on error|batting|at bat|at the plate|to bat|steps in|leading off|leads off|now batting)/i;
   const merged: string[] = [];
   for (let i = 0; i < segments.length; i++) {
     const cur = segments[i]?.trim();
     const nxt = segments[i + 1]?.trim();
     if (!cur) continue;
     if (nxt && typeLed.test(cur) && nameLed.test(nxt)) {
-      merged.push(`${cur} ${nxt}`.trim());
-      i++; // skip next; it is merged
+      const tm = cur.match(/^(Strikeout|Fly Out|Ground Out|Line Out|Walk|Hit By Pitch|Single|Double|Triple|Home Run|Reach(?:es)? on Error)\b/i);
+      const typeWord = tm ? tm[1].toLowerCase() : "";
+      const typeToVerb: Record<string, string> = {
+        "strikeout": "strikes out",
+        "fly out": "flies out",
+        "ground out": "grounds out",
+        "line out": "lines out",
+        "walk": "walks",
+        "hit by pitch": "is hit by pitch",
+        "single": "singles",
+        "double": "doubles",
+        "triple": "triples",
+        "home run": "homers",
+        "reach on error": "reaches on error",
+        "reaches on error": "reaches on error",
+      };
+      const expectedVerb = typeToVerb[typeWord] || "";
+      const samePlay = expectedVerb ? new RegExp(`\\b${expectedVerb}\\b`, "i").test(nxt) : false;
+      if (samePlay) {
+        merged.push(`${cur} ${nxt}`.trim());
+        i++; // skip next; it is merged
+      } else {
+        merged.push(cur);
+      }
     } else {
       merged.push(cur);
     }
@@ -365,14 +482,56 @@ export async function segmentGameText(
 export async function canonicalizeGameText(
   rawGameText: string,
   ctx: GameContext,
-  options: { model?: string; maxRetries?: number; segmentationMode?: "det" | "llm" | "hybrid"; transportTimeoutMs?: number; verbose?: boolean; concurrency?: number; canonMode?: "llm" | "det"; segmentationRetries?: number } = {}
+  options: { model?: string; maxRetries?: number; segmentationMode?: "det" | "llm" | "hybrid"; transportTimeoutMs?: number; verbose?: boolean; concurrency?: number; canonMode?: "llm" | "det"; segmentationRetries?: number; segmentationConcurrency?: number } = {}
 ): Promise<CanonicalizeGameResult> {
   const { model = "gpt-5-mini", maxRetries = 2, segmentationMode = "hybrid", transportTimeoutMs, verbose } = options;
   const concurrency = Math.max(1, Number((options as any).concurrency ?? process.env.GS_CANON_CONCURRENCY ?? 3));
   const segRetries = Math.max(1, Number((options as any).segmentationRetries ?? maxRetries));
-  const segments = await segmentGameText(rawGameText, { model, maxRetries: segRetries, segmentationMode, transportTimeoutMs, verbose });
+  const segments = await segmentGameText(rawGameText, { model, maxRetries: segRetries, segmentationMode, transportTimeoutMs, verbose, segmentationConcurrency: (options as any).segmentationConcurrency });
   
   const isDet = (options as any).canonMode === "det";
+
+  // --- Per-segment LRU cache (avoids re-LLMing identical segments) ---
+  type CanonCacheEntry = { ts: number; value: PlateAppearanceCanonical };
+  const CANON_CACHE_MAX = Math.max(50, Number(process.env.GS_CANON_CACHE_MAX || 200));
+  // Module-level cache store
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  if (!(globalThis as any).__GS_CANON_CACHE) {
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    (globalThis as any).__GS_CANON_CACHE = new Map<string, CanonCacheEntry>();
+  }
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  const CANON_CACHE: Map<string, CanonCacheEntry> = (globalThis as any).__GS_CANON_CACHE;
+
+  function canonKey(seg: string, context: GameContext, model?: string, mode?: string) {
+    const h = createHash("sha256");
+    h.update(JSON.stringify({ v: 1, seg, ctx: context, model: model || "", mode: mode || "llm" }));
+    return h.digest("hex");
+  }
+  function canonGet(key: string): PlateAppearanceCanonical | undefined {
+    const e = CANON_CACHE.get(key);
+    if (!e) return undefined;
+    // bump recency
+    CANON_CACHE.delete(key);
+    e.ts = Date.now();
+    CANON_CACHE.set(key, e);
+    return e.value;
+  }
+  function canonSet(key: string, value: PlateAppearanceCanonical) {
+    if (CANON_CACHE.size >= CANON_CACHE_MAX) {
+      // evict oldest
+      let oldestK: string | undefined;
+      let oldestTs = Infinity;
+      for (const [k, v] of CANON_CACHE.entries()) {
+        if (v.ts < oldestTs) { oldestTs = v.ts; oldestK = k; }
+      }
+      if (oldestK) CANON_CACHE.delete(oldestK);
+    }
+    CANON_CACHE.set(key, { ts: Date.now(), value });
+  }
 
   // Prepare results container: fill immediately for det mode, else allocate and fill via LLM workers
   const resultsArr: (PlateAppearanceCanonical | undefined)[] = isDet
@@ -387,10 +546,18 @@ export async function canonicalizeGameText(
         const i = next++;
         if (i >= segments.length) break;
         const seg = segments[i];
+        const key = canonKey(seg, ctx, model, (options as any).canonMode || "llm");
+        const cached = canonGet(key);
+        if (cached) {
+          if (verbose) console.error(`[canonicalizeGameText] [w${id}] cache hit for segment ${i + 1}/${segments.length}`);
+          resultsArr[i] = cached;
+          continue;
+        }
         if (verbose) console.error(`[canonicalizeGameText] [w${id}] Canonicalizing segment ${i + 1}/${segments.length}`);
         const res = await canonicalizePlateAppearance(seg, ctx, { model, transportTimeoutMs, verbose, maxRetries });
         if (res.ok && res.data) {
           resultsArr[i] = res.data;
+          canonSet(key, res.data);
         } else {
           errors.push(`Segment ${i}: ${(res.errors || []).join("; ")}`);
         }
@@ -437,8 +604,11 @@ export async function canonicalizeGameText(
     }
   }
 
-  const results: PlateAppearanceCanonical[] = resultsArr.filter(Boolean) as PlateAppearanceCanonical[];
+  // Keep segments and data aligned: drop any positions where PA is missing
+  const pairs = resultsArr.map((pa, i) => ({ pa, seg: segments[i] })).filter((x) => !!x.pa) as { pa: PlateAppearanceCanonical; seg: string }[];
+  const retSegs = pairs.map((x) => x.seg);
+  const results: PlateAppearanceCanonical[] = pairs.map((x) => x.pa);
 
-  if (errors.length) return { ok: false, segments, data: results, errors };
-  return { ok: true, segments, data: results };
+  if (errors.length) return { ok: false, segments: retSegs, data: results, errors };
+  return { ok: true, segments: retSegs, data: results };
 }

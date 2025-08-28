@@ -9,11 +9,48 @@
  import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
  import { Separator } from '@/components/ui/separator'
  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
- import { Upload, Brain, BarChart3, Zap, Activity, Target, TrendingUp, AlertTriangle, Trash } from 'lucide-react'
+ import { Upload, Brain, BarChart3, Zap, Activity, Target, TrendingUp, Trash, AlertTriangle } from 'lucide-react'
  import type { PlateAppearanceCanonical } from '@gs-src/core/canon/types'
 
 // Persistent session store for aggregated plays within the tab session
 type StoredPA = { pa: PlateAppearanceCanonical; seg: string; segKey: string; canonKey: string }
+
+// Try to derive a batter key from the segment text if the PA is missing a batter.
+function deriveBatterFromSegment(seg?: string): string | undefined {
+  if (!seg) return undefined
+  const t = String(seg).replace(/\s+/g, " ").trim()
+  // Verb-led patterns (e.g., "J M singles", "John Miller strikes out")
+  const fullNameVerb = /\b([A-Za-z][A-Za-z'.-]{0,})\s+([A-Za-z][A-Za-z'.-]{0,})\b\s+(strikes out|walks|is hit by pitch|singles|doubles|triples|homers|reaches on error|grounds out|flies out|lines out)/i
+  const spacedInitsVerb = /\b([A-Z]{1,2})\s+([A-Z]{1,2})\b\s+(strikes out|walks|is hit by pitch|singles|doubles|triples|homers|reaches on error|grounds out|flies out|lines out)/i
+  const compactInitsVerb = /\b([A-Z])([A-Z])\b\s+(strikes out|walks|is hit by pitch|singles|doubles|triples|homers|reaches on error|grounds out|flies out|lines out)/i
+
+  // Batter cue patterns (e.g., "Now batting: J M", "John Miller at the plate")
+  const cue = /(batting|at bat|at the plate|to bat|steps in|leading off|leads off|now batting)/i
+  const fullNameCue = new RegExp(String.raw`\b([A-Za-z][A-Za-z'.-]{0,})\s+([A-Za-z][A-Za-z'.-]{0,})\b\s+` + cue.source, 'i')
+  const spacedInitsCue = new RegExp(String.raw`\b([A-Z]{1,2})\s+([A-Z]{1,2})\b\s+` + cue.source, 'i')
+  const cueThenFullName = /(?:now batting|batting)[:]?\s+([A-Za-z][A-Za-z'.-]{0,})\s+([A-Za-z][A-Za-z'.-]{0,})\b/i
+  const cueThenInits = /(?:now batting|batting)[:]?\s+([A-Z]{1,2})\s+([A-Z]{1,2})\b/i
+
+  const m =
+    t.match(fullNameVerb) ||
+    t.match(spacedInitsVerb) ||
+    t.match(compactInitsVerb) ||
+    t.match(fullNameCue) ||
+    t.match(spacedInitsCue) ||
+    t.match(cueThenFullName) ||
+    t.match(cueThenInits)
+  if (m) {
+    const a = String(m[1] || "").charAt(0).toUpperCase()
+    const b = String(m[2] || "").charAt(0).toUpperCase()
+    if (a && b) return `${a} ${b}`
+  }
+  return undefined
+}
+
+function clipSeg(s?: string, max: number = 400): string {
+  const t = (s || "").trim()
+  return t.length > max ? `${t.slice(0, max)}…` : t
+}
 type StoredSession = { version: 1; plays: StoredPA[] }
 const SESSION_KEY = "gs:session:v1"
 
@@ -56,8 +93,24 @@ function saveSession(s: StoredSession) {
 function mergeExtractIntoSession(extract: any): { session: StoredSession; added: number } {
   const prev = loadSession() || { version: 1 as const, plays: [] as StoredPA[] }
   const before = prev.plays.length
-  const data: PlateAppearanceCanonical[] = Array.isArray(extract?.data) ? (extract.data as any) : []
-  const segs: string[] = Array.isArray(extract?.segments) ? (extract.segments as any) : []
+  const rawData: PlateAppearanceCanonical[] = Array.isArray(extract?.data) ? (extract.data as any) : []
+  const rawSegs: string[] = Array.isArray(extract?.segments) ? (extract.segments as any) : []
+  // Realign pairs defensively to avoid mismatches and giant segments
+  const MAX_SEG_LEN = 20000
+  const pairs: { pa: PlateAppearanceCanonical; seg: string }[] = []
+  const n = Math.max(rawData.length, rawSegs.length)
+  for (let i = 0; i < n; i++) {
+    const pa = rawData[i] as any
+    const seg = rawSegs[i]
+    if (!pa) continue
+    if (typeof seg !== 'string') continue
+    const s = seg.trim()
+    if (!s) continue
+    if (s.length > MAX_SEG_LEN) continue
+    pairs.push({ pa, seg: s })
+  }
+  const data: PlateAppearanceCanonical[] = pairs.map(p => p.pa)
+  const segs: string[] = pairs.map(p => p.seg)
   if (!data.length) return { session: prev, added: 0 }
 
   const segSet = new Set(prev.plays.map((p) => p.segKey))
@@ -75,6 +128,7 @@ function mergeExtractIntoSession(extract: any): { session: StoredSession; added:
     if (segKey) segSet.add(segKey)
     if (cKey) cSet.add(cKey)
   }
+  // helpers moved to module scope
 
   saveSession(prev)
   return { session: prev, added: prev.plays.length - before }
@@ -116,11 +170,15 @@ export default function GreenSeamDashboard() {
 
       const body = {
         text: finalText,
-        segMode: "hybrid",
+        segMode: "llm",
         model: "gpt-5-mini",
-        timeoutMs: 45000,
+        timeoutMs: 60000,
         verbose: false,
         deterministic: false,
+        // Tuning knobs for server to override env-based defaults
+        segConc: 4,
+        canonConc: 4,
+        segRetries: 3,
       }
 
       const resp = await fetch("/api/extract", {
@@ -130,20 +188,42 @@ export default function GreenSeamDashboard() {
       })
 
       const data = await resp.json().catch(() => ({}))
-      if (!resp.ok || (data && data.ok === false)) {
+      // Always show the server response in the raw output pane
+      setOutput(JSON.stringify(data, null, 2))
+      if (!resp.ok) {
         setStatus("Error")
-        setOutput(JSON.stringify(data, null, 2))
         setResult(null)
         return
       }
 
-      setOutput(JSON.stringify(data, null, 2))
-      // Merge exact returned PAs and segments into the session store (no synthesis)
-      const before = loadSession()?.plays.length || 0
-      const { session, added } = mergeExtractIntoSession(data)
-      const total = session.plays.length
-      setResult({ ok: true, data: session.plays.map((p) => p.pa), segments: session.plays.map((p) => p.seg) })
-      setStatus(`Merged ${added} new plays. Session total: ${total}.`)
+      // Merge exact returned PAs/segments even if ok === false (partial success)
+      let added = 0
+      let total = 0
+      if (Array.isArray(data?.data) && data.data.length > 0) {
+        const { session, added: a } = mergeExtractIntoSession(data)
+        added = a
+        total = session.plays.length
+        setResult({ ok: true, data: session.plays.map((p) => p.pa), segments: session.plays.map((p) => p.seg) })
+      } else {
+        setResult(null)
+      }
+
+      const errCount = Array.isArray(data?.errors) ? data.errors.length : 0
+      if (data && data.ok === false) {
+        if (added > 0) {
+          setStatus(`Partial success: merged ${added} plays (${total} total). ${errCount} errors.`)
+        } else {
+          setStatus(`Error${errCount ? `: ${errCount} errors` : ""}`)
+        }
+        return
+      }
+
+      // ok === true path
+      if (added > 0) {
+        setStatus(`Merged ${added} new plays. Session total: ${total}.`)
+      } else {
+        setStatus(errCount ? `Done with ${errCount} warnings` : "Done")
+      }
     } catch (e: any) {
       setStatus("Error")
       setOutput(String(e?.message || e))
@@ -211,10 +291,10 @@ export default function GreenSeamDashboard() {
     breakdown: { results: Record<string, number>; battedBall: { gb: number; fb: number; ld: number }; power: { double: number; triple: number; hr: number }; pitchMix: Record<string, number> }
     sampleNotes: string[]
     segments: string[]
-    recommendations: string[]
+    swing_mechanic?: string
+    positional?: string
+    opponent_pattern?: string
     recommendations_confidence: number
-    exploit_recommendations: string[]
-    exploit_recommendations_confidence: number
     recentForm: number[]
   }
 
@@ -226,7 +306,9 @@ export default function GreenSeamDashboard() {
     // group by batter
     const groups = new Map<string, { idxs: number[]; pas: PlateAppearanceCanonical[] }>()
     data.forEach((pa: any, i: number) => {
-      const key = pa?.batter || "Unknown Batter"
+      const seg = segs[i]
+      const fallback = deriveBatterFromSegment(seg)
+      const key = (typeof pa?.batter === "string" && pa.batter.trim()) ? pa.batter : (fallback || `Unknown ${i + 1}`)
       if (!groups.has(key)) groups.set(key, { idxs: [], pas: [] })
       const g = groups.get(key)!
       g.idxs.push(i)
@@ -256,85 +338,106 @@ export default function GreenSeamDashboard() {
 
       const recentForm = g.idxs.slice(-7).map((i) => isHit((data[i] as any).pa_result) ? 1 : 0)
       const latestSeg = g.idxs.length ? segs[g.idxs[g.idxs.length - 1]] : undefined
-      const sampleNotes = latestSeg ? [latestSeg] : []
+      const sampleNotes = latestSeg ? [clipSeg(latestSeg)] : []
       const segTexts = g.idxs.map((i) => segs[i]).filter(Boolean)
 
-      // Concrete, metric-anchored insights (no vague advice)
-      // Derive swing/miss and count tendencies
-      let swings = 0, misses = 0, firstPitchBall = 0, firstPitchSwing = 0
-      let kLooking = 0, kSwing = 0
-      pas.forEach((p: any) => {
-        const seq: string[] = Array.isArray(p.pitches) ? p.pitches : []
-        if (seq[0] === "ball") firstPitchBall++
-        if (["swinging_strike", "in_play", "foul"].includes(seq[0] || "")) firstPitchSwing++
-        for (const ev of seq) {
-          const isSwing = ev === "swinging_strike" || ev === "in_play" || ev === "foul"
-          if (isSwing) swings++
-          if (ev === "swinging_strike") misses++
-        }
-        if (p.pa_result === "strikeout") {
-          const last = seq[seq.length - 1]
-          if (last === "called_strike") kLooking++
-          if (last === "swinging_strike") kSwing++
-        }
-      })
+      // Defer tips entirely to AI endpoint — two items only
+      const avgConf = 0
 
-      const missRateOnSwings = swings ? misses / swings : 0
-      const firstPitchBallRate = n ? firstPitchBall / n : 0
-      const firstPitchSwingRate = n ? firstPitchSwing / n : 0
-      const totalKs = kLooking + kSwing
-
-      const recs: string[] = []
-      const toPct = (v: number) => `${Math.round(v * 100)}%`
-
-      if (strikeoutRate >= 0.3) {
-        const cur = Math.round(strikeoutRate * 100)
-        const tgt = Math.max(0, cur - 10)
-        const calledShare = totalKs ? Math.round((kLooking / totalKs) * 100) : 0
-        recs.push(`Cut K% ${cur}% → ${tgt}% over next 20 PAs. Reduce called-K share (${calledShare}%) by protecting on borderline with 2 strikes; mandate at least 1 foul on any pitch within 2 inches of edge.`)
-      }
-      if (missRateOnSwings >= 0.35) {
-        const cur = Math.round(missRateOnSwings * 100)
-        const tgt = Math.max(0, cur - 8)
-        recs.push(`Lower miss-on-swing ${cur}% → ${tgt}%. Emphasize 2-strike shorten-up and late fouls; goal: ≥2 fouls on 2-strike at-bats before a ball in play or K.`)
-      }
-      if (walkRate <= 0.05 && firstPitchBallRate >= 0.6) {
-        const cur = Math.round(firstPitchSwingRate * 100)
-        const tgt = Math.min(60, Math.max(25, cur + 10))
-        recs.push(`Selectively attack first pitch. Raise 0-0 swing rate ${cur}% → ${tgt}% when FB in zone; objective: +3 first-pitch BIP events over next 20 PAs.`)
-      }
-      const xbh = power.hr + power.double + power.triple
-      if (contactRate >= 0.7 && (xbh / Math.max(1, n)) < 0.1) {
-        recs.push(`Increase damage on advantage counts. Target +2 XBH in next 20 PAs; hunt belt-high middle-in when ahead (no chase).`)
-      }
-      if (recs.length === 0) {
-        // Always provide at least one measurable lever
-        recs.push(`Improve zone control: target chase proxy (miss-on-swing) ≤ ${Math.max(0, Math.round(missRateOnSwings * 100) - 5)}% and force ≥1 foul with 2 strikes per PA.`)
-      }
-
-      const xrecs: string[] = []
-      if (firstPitchSwingRate >= 0.5 && walkRate <= 0.06) xrecs.push(`Opponents: expand just off edges first pitch; avoid middle-middle early.`)
-      if (totalKs > 0 && (kLooking / totalKs) >= 0.5) xrecs.push(`Opponents: steal late strikes on edges; elevate called-strike risk in 2-strike counts.`)
-      if (missRateOnSwings >= 0.35) xrecs.push(`Opponents: elevate fastballs above belt after showing spin; finish below zone when ahead.`)
-      if (xrecs.length === 0) { /* insufficient evidence for reliable opponent exploits */ }
-
-      const avgConf = pas.reduce((s: number, p: any) => s + (typeof p.confidence === "number" ? p.confidence : 0), 0) / Math.max(1, n)
-
-      summaries.push({
-        name,
-        totals: { pas: n, pitchesSeen, contactRate, strikeoutRate, walkRate, hbpRate },
-        breakdown: { results, battedBall, power, pitchMix },
-        sampleNotes,
-        segments: segTexts,
-        recommendations: recs,
-        recommendations_confidence: avgConf,
-        exploit_recommendations: xrecs,
-        exploit_recommendations_confidence: avgConf,
-        recentForm,
-      })
+        summaries.push({
+          name,
+          totals: { pas: n, pitchesSeen, contactRate, strikeoutRate, walkRate, hbpRate },
+          breakdown: { results, battedBall, power, pitchMix },
+          sampleNotes,
+          segments: segTexts,
+          swing_mechanic: "",
+          positional: "",
+          opponent_pattern: "",
+          recommendations_confidence: avgConf,
+          recentForm,
+        })
     }
     return summaries
   }, [result])
+
+  const [aiByName, setAiByName] = useState<Record<string, { swing_mechanic?: string; positional?: string; opponent_pattern?: string; confidence: number }>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    setAiByName({}) // reset when result changes
+    const run = async () => {
+      try {
+        if (!result?.ok || batters.length === 0) return
+        const data: PlateAppearanceCanonical[] = (result.data || []) as any
+        const segs: string[] = Array.isArray(result.segments) ? result.segments : []
+        const updates: Record<string, { swing_mechanic?: string; positional?: string; opponent_pattern?: string; confidence: number }> = {}
+
+        // Helper to fetch with timeout and simple retry
+        const fetchOne = async (b: typeof batters[number]) => {
+          if (cancelled || aiByName[b.name]) return
+          const idxs = data.map((pa, i) => ({ pa, i })).filter(x => (x.pa as any)?.batter === b.name).map(x => x.i)
+          const pas = idxs.map(i => data[i])
+          const segments = idxs.map(i => segs[i]).filter(Boolean)
+          const attempt = async () => {
+            const controller = new AbortController()
+            const tid = setTimeout(() => controller.abort(), 20000)
+            try {
+              const resp = await fetch("/api/recommendations", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ batter: b.name, pas, segments, model: "gpt-5-mini" }),
+                signal: controller.signal,
+              })
+              const json = await resp.json().catch(() => ({}))
+              if (json && json.ok) {
+                updates[b.name] = {
+                  swing_mechanic: typeof json.swing_mechanic === "string" ? json.swing_mechanic : "",
+                  positional: typeof json.positional === "string" ? json.positional : "",
+                  opponent_pattern: typeof json.opponent_pattern === "string" ? json.opponent_pattern : "",
+                  confidence: typeof json.confidence === "number" ? json.confidence : 0,
+                }
+                return
+              }
+            } catch {}
+            finally { clearTimeout(tid) }
+            // Fallback: mark as completed with empty strings (no spinner)
+            updates[b.name] = { swing_mechanic: "", positional: "", opponent_pattern: "", confidence: 0 }
+          }
+          // One try + one quick retry
+          await attempt()
+          if (!updates[b.name]) await attempt()
+        }
+
+        // Limit concurrency to reduce rate limits/timeouts
+        const POOL = 3
+        for (let i = 0; i < batters.length && !cancelled; i += POOL) {
+          const slice = batters.slice(i, i + POOL)
+          await Promise.all(slice.map(fetchOne))
+          if (!cancelled && Object.keys(updates).length) {
+            setAiByName((prev) => ({ ...prev, ...updates }))
+            // clear updates so subsequent batches don't resend
+            for (const k in updates) delete updates[k as keyof typeof updates]
+          }
+        }
+      } catch {}
+    }
+    run()
+    return () => { cancelled = true }
+  }, [result, batters])
+
+  const battersAI = useMemo(() => {
+    if (!batters.length) return [] as typeof batters
+    return batters.map((b) => {
+      const ai = aiByName[b.name]
+      return {
+        ...b,
+        swing_mechanic: ai?.swing_mechanic ?? b.swing_mechanic ?? "",
+        positional: ai?.positional ?? b.positional ?? "",
+        opponent_pattern: ai?.opponent_pattern ?? b.opponent_pattern ?? "",
+        recommendations_confidence: ai?.confidence ?? 0,
+      }
+    })
+  }, [batters, aiByName])
 
   const globalCounts = useMemo(() => {
     const arr: PlateAppearanceCanonical[] = (result?.data || []) as any
@@ -351,13 +454,13 @@ export default function GreenSeamDashboard() {
   }, [result])
 
   const filteredBatters = useMemo(() => {
-    let arr = batters
+    let arr = battersAI
     if (minPA > 0) arr = arr.filter((b) => b.totals.pas >= minPA)
     if (resultFilter === "so") arr = arr.filter((b) => (b.breakdown.results["strikeout"] || 0) > 0)
     else if (resultFilter === "bb") arr = arr.filter((b) => (b.breakdown.results["walk"] || 0) > 0)
     else if (resultFilter === "hr") arr = arr.filter((b) => (b.breakdown.power.hr || 0) > 0)
     return arr
-  }, [batters, minPA, resultFilter])
+  }, [battersAI, minPA, resultFilter])
 
   const goFullAnalysis = useCallback((batter: any) => {
     try {
@@ -402,98 +505,129 @@ export default function GreenSeamDashboard() {
     }
   }, [])
 
+  const clearAll = useCallback(() => {
+    try {
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem(SESSION_KEY)
+      }
+    } catch {}
+    setResult(null)
+    setStatus("Session cleared.")
+    setOutput("(no output yet)")
+    setPasteText("")
+    setFile(null)
+    setMinPA(0)
+    setResultFilter("all")
+  }, [])
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black">
-      <main className="container mx-auto px-4 py-6">
-        <div className="flex flex-col items-center justify-center mb-8">
-          <div className="text-center mb-4">
-            <h1 className="text-6xl font-mono font-bold bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent mb-2 drop-shadow-2xl">
-              GREENSEAM AI
-            </h1>
-          </div>
+  <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black">
+    <main className="container mx-auto px-4 py-6">
+      <div className="flex flex-col items-center justify-center mb-8">
+        <div className="text-center mb-4">
+          <h1 className="text-6xl font-mono font-bold bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent mb-2 drop-shadow-2xl">
+            GREENSEAM AI
+          </h1>
+        </div>
 
-          {/* Hidden file input bound to the styled Upload button */}
-          <Input id="file" type="file" accept=".txt,text/plain" className="hidden" onChange={onFileChange} />
+        {/* Hidden file input bound to the styled Upload button */}
+        <Input id="file" type="file" accept=".txt,text/plain" className="hidden" onChange={onFileChange} />
+        <Button
+          asChild
+          variant="outline"
+          size="lg"
+          disabled={running}
+          className="gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-6 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
+        >
+          <Label htmlFor="file" className="flex items-center gap-3 cursor-pointer">
+            <Upload className="w-4 h-4" />
+            {running ? "Processing..." : "UPLOAD DATA"}
+          </Label>
+        </Button>
+      </div>
+
+      {/* Paste Text Ingest (same pipeline as file upload) */}
+      <div className="mx-auto w-full max-w-3xl -mt-4 mb-6">
+        <Label htmlFor="paste" className="text-xs font-mono text-gray-400 mb-1 inline-block">Paste Data</Label>
+        <Textarea
+          id="paste"
+          placeholder="Paste play-by-play text here..."
+          className="bg-black/50 border-amber-500/20 text-amber-100 placeholder:text-gray-500"
+          rows={6}
+          value={pasteText}
+          onChange={(e) => setPasteText((e.target as HTMLTextAreaElement).value)}
+        />
+        <div className="mt-2 flex items-center gap-2">
           <Button
-            asChild
-            variant="outline"
-            size="lg"
+            onClick={ingestPaste}
             disabled={running}
-            className="gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-6 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
+            variant="outline"
+            className="gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-4 py-2 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
           >
-            <Label htmlFor="file" className="flex items-center gap-3 cursor-pointer">
-              <Upload className="w-4 h-4" />
-              {running ? "Processing..." : "UPLOAD DATA"}
-            </Label>
+            {running ? "Processing..." : "INGEST TEXT"}
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="text-xs font-mono text-gray-400"
+            onClick={() => setPasteText("")}
+          >
+            Clear
+          </Button>
+          <span className="text-[11px] font-mono text-gray-500">Duplicates are auto-skipped; new plays merge into the current session.</span>
         </div>
+      </div>
 
-        {/* Paste Text Ingest (same pipeline as file upload) */}
-        <div className="mx-auto w-full max-w-3xl -mt-4 mb-6">
-          <Label htmlFor="paste" className="text-xs font-mono text-gray-400 mb-1 inline-block">Paste Data</Label>
-          <Textarea
-            id="paste"
-            placeholder="Paste play-by-play text here..."
-            className="bg-black/50 border-amber-500/20 text-amber-100 placeholder:text-gray-500"
-            rows={6}
-            value={pasteText}
-            onChange={(e) => setPasteText((e.target as HTMLTextAreaElement).value)}
-          />
-          <div className="mt-2 flex items-center gap-2">
-            <Button
-              onClick={ingestPaste}
-              disabled={running}
-              variant="outline"
-              className="gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-4 py-2 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
-            >
-              {running ? "Processing..." : "INGEST TEXT"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="text-xs font-mono text-gray-400"
-              onClick={() => setPasteText("")}
-            >
-              Clear
-            </Button>
-            <span className="text-[11px] font-mono text-gray-500">Duplicates are auto-skipped; new plays merge into the current session.</span>
-          </div>
-        </div>
+      <div className="text-xs font-mono text-amber-300 mb-3 text-center">{status}</div>
 
-        <div className="text-xs font-mono text-amber-300 mb-3 text-center">{status}</div>
-
-        {/* Filters and quick summary */}
-        {result?.ok && batters.length > 0 && (
-          <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-3">
-
-            <div>
-              <Label className="text-xs font-mono text-gray-400 mb-1 inline-block">Result Filter</Label>
+      {/* Filters and quick summary */}
+      {result?.ok && batters.length > 0 && (
+        <div className="mb-6">
+          <div className="flex flex-col sm:flex-row items-end justify-center gap-3">
+            {/* Filter Dropdown */}
+            <div className="w-full sm:w-48">
+              <Label className="text-xs font-mono text-gray-400 mb-1 block">Result Filter</Label>
               <Select value={resultFilter} onValueChange={(v) => setResultFilter(v as any)}>
-                <SelectTrigger className="bg-black/50 border-amber-500/20 text-amber-100">
+                <SelectTrigger className="bg-black/50 border-amber-500/20 text-amber-100 w-full h-9">
                   <SelectValue placeholder="All Results" />
-{{ ... }}
+                </SelectTrigger>
+                <SelectContent className="bg-black/90 border-amber-500/20 text-amber-100">
+                  <SelectItem value="all">All Results</SelectItem>
+                  <SelectItem value="so">Strikeouts (SO)</SelectItem>
+                  <SelectItem value="bb">Walks (BB)</SelectItem>
+                  <SelectItem value="hr">Home Runs (HR)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Min PA Input */}
+            <div className="w-full sm:w-32">
+              <Label className="text-xs font-mono text-gray-400 mb-1 block">Min PA</Label>
+              <Input
+                type="number"
+                min={0}
+                step={1}
                 value={minPA}
-                onChange={(e) => setMinPA(Number((e.target as HTMLInputElement).value || 0))}
-                className="bg-black/50 border-amber-500/20 text-amber-100"
+                onChange={(e) => setMinPA(Number(e.target.value))}
+                className="bg-gray-800/50 border-gray-700/50 text-amber-100 w-full h-9"
               />
             </div>
-            <div className="flex items-end">
-              <div className="w-full grid grid-cols-3 gap-2 text-center">
-                <div className="p-2 bg-gray-800/50 border border-gray-700/50 rounded">
-                  <div className="text-sm font-mono font-bold text-amber-100">{globalCounts.so}</div>
-                  <div className="text-[10px] text-gray-400 font-mono">SO</div>
-                </div>
-                <div className="p-2 bg-gray-800/50 border border-gray-700/50 rounded">
-                  <div className="text-sm font-mono font-bold text-amber-100">{globalCounts.bb}</div>
-                  <div className="text-[10px] text-gray-400 font-mono">BB</div>
-                </div>
-                <div className="p-2 bg-gray-800/50 border border-gray-700/50 rounded">
-                  <div className="text-sm font-mono font-bold text-amber-100">{globalCounts.hr}</div>
-                  <div className="text-[10px] text-gray-400 font-mono">HR</div>
+            
+            {/* Stats Display */}
+            <div className="w-full sm:w-auto flex items-center h-9">
+              <div className="p-1.5 bg-gray-800/50 border border-gray-700/50 rounded h-full flex items-center">
+                <div className="text-xs font-mono font-medium text-amber-100 flex items-center gap-1">
+                  <span className="text-gray-400">SO:</span> {globalCounts.so}
+                  <span className="text-gray-500">|</span>
+                  <span className="text-gray-400">BB:</span> {globalCounts.bb}
+                  <span className="text-gray-500">|</span>
+                  <span className="text-gray-400">HR:</span> {globalCounts.hr}
                 </div>
               </div>
             </div>
-            <div className="flex items-end justify-end">
+            
+            {/* Delete Button */}
+            <div className="w-full sm:w-auto">
               <Button
                 onClick={() => {
                   if (window.confirm('Delete all player cards and clear this session?')) {
@@ -502,7 +636,7 @@ export default function GreenSeamDashboard() {
                 }}
                 disabled={running || (batters.length === 0)}
                 variant="destructive"
-                className="gap-2"
+                className="gap-2 w-full sm:w-auto h-9"
                 aria-label="Delete all player cards"
                 title="Delete all player cards"
               >
@@ -511,22 +645,22 @@ export default function GreenSeamDashboard() {
               </Button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Previous dashboard stat cards */}
-        {result?.ok && batters.length > 0 && (
-          <div className="grid grid-cols-4 gap-4 mb-10">
-            <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
-{{ ... }}
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500/20 rounded-lg">
-                    <BarChart3 className="w-5 h-5 text-amber-300" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400 font-mono mb-1">ACTIVE BATTERS</p>
-                    <p className="text-2xl font-mono font-bold text-amber-100">{filteredBatters.length}</p>
-                  </div>
+      {/* Previous dashboard stat cards */}
+      {result?.ok && batters.length > 0 && (
+        <div className="grid grid-cols-4 gap-4 mb-10">
+          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-500/20 rounded-lg">
+                  <BarChart3 className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-400 font-mono mb-1">ACTIVE BATTERS</p>
+                  <p className="text-2xl font-mono font-bold text-amber-100">{filteredBatters.length}</p>
+                </div>
                 </div>
               </CardContent>
             </Card>
@@ -560,7 +694,7 @@ export default function GreenSeamDashboard() {
                   <div>
                     <p className="text-sm text-gray-400 font-mono mb-1">AI INSIGHTS</p>
                     <p className="text-2xl font-mono font-bold text-amber-100">{
-                      filteredBatters.reduce((s, b) => s + b.recommendations.length + b.exploit_recommendations.length, 0)
+                      filteredBatters.reduce((s, b) => s + (b.swing_mechanic ? 1 : 0) + (b.positional ? 1 : 0) + (b.opponent_pattern ? 1 : 0), 0)
                     }</p>
                   </div>
                 </div>
@@ -700,45 +834,74 @@ export default function GreenSeamDashboard() {
 
                   {/* Original Segments removed per request */}
 
-                  {/* AI Recommendations */}
+                  {/* AI Recommendations: exactly two strings */}
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Brain className="w-4 h-4 text-amber-400" />
-                      <p className="text-xs font-mono text-gray-400">IMPROVEMENT INSIGHTS</p>
+                      <p className="text-xs font-mono text-gray-400">COACHING INSIGHTS</p>
                       <span className="text-xs font-mono text-amber-300 bg-amber-500/20 px-2 py-1 rounded border border-amber-500/30">
                         {(batter.recommendations_confidence * 100).toFixed(0)}%
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {batter.recommendations.slice(0, 2).map((rec, index) => (
-                        <div
-                          key={index}
-                          className="p-3 bg-gray-800/30 border border-gray-700/30 rounded text-xs font-mono text-gray-300 leading-relaxed"
-                        >
-                          {rec}
+                      {!aiByName[batter.name] ? (
+                        <div className="p-3 bg-gray-800/20 border border-gray-700/30 rounded text-xs font-mono text-gray-400 italic">
+                          Generating insights...
                         </div>
-                      ))}
+                      ) : (
+                        <>
+                          {(!batter.swing_mechanic && !batter.positional) ? (
+                            <div className="p-3 bg-gray-800/20 border border-gray-700/30 rounded text-xs font-mono text-gray-400">
+                              No clear, data-backed coaching insight.
+                            </div>
+                          ) : (
+                            <>
+                              {batter.swing_mechanic && (
+                                <div className="p-3 bg-gray-800/30 border border-gray-700/30 rounded text-xs font-mono text-gray-300 leading-relaxed">
+                                  <span className="text-[10px] uppercase tracking-wide text-amber-300/80 mr-2">Swing Mechanics</span>
+                                  {batter.swing_mechanic}
+                                </div>
+                              )}
+                              {batter.positional && (
+                                <div className="p-3 bg-gray-800/30 border border-gray-700/30 rounded text-xs font-mono text-gray-300 leading-relaxed">
+                                  <span className="text-[10px] uppercase tracking-wide text-amber-300/80 mr-2">Positional</span>
+                                  {batter.positional}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {/* Exploit Recommendations */}
+                  {/* Opponent Exploitable Pattern */}
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-red-400" />
-                      <p className="text-xs font-mono text-gray-400">OPPONENT STRATEGY</p>
+                      <p className="text-xs font-mono text-gray-400">OPPONENT PATTERN</p>
                       <span className="text-xs font-mono text-red-300 bg-red-500/20 px-2 py-1 rounded border border-red-500/30">
-                        {(batter.exploit_recommendations_confidence * 100).toFixed(0)}%
+                        {(batter.recommendations_confidence * 100).toFixed(0)}%
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {batter.exploit_recommendations.slice(0, 2).map((rec, index) => (
-                        <div
-                          key={index}
-                          className="p-3 bg-red-900/10 border border-red-500/20 rounded text-xs font-mono text-red-200 leading-relaxed"
-                        >
-                          {rec}
+                      {!aiByName[batter.name] ? (
+                        <div className="p-3 bg-red-900/10 border border-red-500/20 rounded text-xs font-mono text-red-200/70 italic">
+                          Analyzing for opponent exploitable trends...
                         </div>
-                      ))}
+                      ) : (
+                        <>
+                          {!batter.opponent_pattern ? (
+                            <div className="p-3 bg-red-900/10 border border-red-500/20 rounded text-xs font-mono text-red-200/80">
+                              No clear, data-backed opponent pattern.
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-red-900/10 border border-red-500/20 rounded text-xs font-mono text-red-200 leading-relaxed">
+                              {batter.opponent_pattern}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
 
