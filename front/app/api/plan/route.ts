@@ -29,15 +29,26 @@ function deriveMetrics(pas: PlateAppearanceCanonical[]) {
   const battedBall = { gb: cnt("gb"), fb: cnt("fb"), ld: cnt("ld") };
   const power = { single: cnt("single"), double: cnt("double"), triple: cnt("triple"), hr: cnt("hr") };
 
+  // Basic batting line approximations
+  const walks = cnt("walk");
+  const hbp = cnt("hbp");
+  const hits = power.single + power.double + power.triple + power.hr;
+  const ab = Math.max(0, n - walks - hbp); // approx AB (sac not tracked)
+  const avg = ab ? hits / ab : 0;
+  const obpDen = ab + walks + hbp; // sac flies not tracked
+  const obp = obpDen ? (hits + walks + hbp) / obpDen : 0;
+  const xbh = power.double + power.triple + power.hr;
+
   // Pitch mix and swing/miss proxies
   const pitchMix: Record<string, number> = { ball: 0, called_strike: 0, swinging_strike: 0, foul: 0, in_play: 0 };
   let swings = 0, misses = 0;
-  let firstPitchBall = 0, firstPitchSwing = 0;
+  let firstPitchBall = 0, firstPitchSwing = 0, firstPitchTake = 0;
   let twoStrikeSwings = 0, twoStrikeKLooking = 0, twoStrikeKSw = 0;
   for (const pa of pas) {
     const seq = pa.pitches || [];
     if (seq[0] === "ball") firstPitchBall++;
-    if (seq[0] === "swinging_strike" || seq[0] === "in_play") firstPitchSwing++;
+    if (seq[0] === "called_strike" || seq[0] === "ball") firstPitchTake++;
+    if (seq[0] === "swinging_strike" || seq[0] === "in_play" || seq[0] === "foul") firstPitchSwing++;
     for (const ev of seq) pitchMix[ev] = (pitchMix[ev] || 0) + 1;
     const states = computeCounts(seq);
     for (const st of states) {
@@ -54,7 +65,7 @@ function deriveMetrics(pas: PlateAppearanceCanonical[]) {
   }
 
   return {
-    sample: { pas: n, pitchesSeen },
+    sample: { pas: n, pitchesSeen, bip: Math.round(contactRate * n) },
     rates: {
       contactRate,
       strikeoutRate,
@@ -66,14 +77,59 @@ function deriveMetrics(pas: PlateAppearanceCanonical[]) {
     approach: {
       firstPitchBallRate: n ? firstPitchBall / n : 0,
       firstPitchSwingRate: n ? firstPitchSwing / n : 0,
+      firstPitchTakeRate: n ? firstPitchTake / n : 0,
       twoStrikeSwingEvents: twoStrikeSwings,
       twoStrikeKLooking,
       twoStrikeKSw,
     },
     battedBall,
     power,
+    batting: { hits, ab, avg, obp, xbh },
     pitchMix,
   };
+}
+
+// Compact and normalize recommendation text to the exact terse style
+function sanitizeLine(s: any): string {
+  let out = String(s ?? "").replace(/\s+/g, " ").trim()
+  if (!out) return ""
+  // Abbreviations and style tightening
+  const reps: Array<[RegExp, string]> = [
+    [/percent/gi, "%"],
+    [/\bplate appearances?\b/gi, "PA"],
+    [/\bpitches per (plate appearance|pa)\b/gi, "pitches/PA"],
+    [/\bplate appearance\b/gi, "PA"],
+    [/\bfirst pitch\b/gi, "first‑pitch"],
+    [/\btwo strike\b/gi, "two‑strike"],
+    [/\bdouble play\b/gi, "double‑play"],
+    [/\boutfield\b/gi, "OF"],
+    [/\binfield\b/gi, "IF"],
+    [/\bstrikeout\b/gi, "K"],
+    [/\bwalks?\b/gi, "BB"],
+    [/\bhome runs?\b/gi, "HR"],
+    [/\bline drives?\b/gi, "LD"],
+    [/\bground( |-)balls?\b/gi, "GB"],
+    [/\bfly( |-)balls?\b/gi, "FB"],
+  ]
+  for (const [rgx, repl] of reps) out = out.replace(rgx, repl)
+  // Prefer em-dash for reason clauses
+  out = out.replace(/\s-\s/g, " — ")
+  // Length clamp to keep one concise line
+  const MAX = 160
+  if (out.length > MAX) out = out.slice(0, MAX - 1) + "…"
+  return out
+}
+
+function enforcePatternsStyle(plan: any) {
+  const tp = Array.isArray(plan?.teaching_patterns) ? plan.teaching_patterns : []
+  const ep = Array.isArray(plan?.exploitable_patterns) ? plan.exploitable_patterns : []
+  const clean = (x: any) => ({
+    instruction: sanitizeLine(x?.instruction),
+    evidence: sanitizeLine(x?.evidence),
+  })
+  const cleanTp = tp.map(clean).filter((x: any) => x.instruction)
+  const cleanEp = ep.map(clean).filter((x: any) => x.instruction)
+  return { ...plan, teaching_patterns: cleanTp.slice(0, 10), exploitable_patterns: cleanEp.slice(0, 10) }
 }
 
 export async function POST(req: NextRequest) {
@@ -90,14 +146,14 @@ export async function POST(req: NextRequest) {
     const metrics = deriveMetrics(pas);
 
     const system = [
-      "You are an elite MLB hitting and game-planning assistant.",
-      "Your outputs must be operational, specific, and testable.",
-      "Only use the metrics and segments provided. Do not infer missing details.",
-      "If evidence is weak or inconsistent, omit the item entirely.",
-      "Forbidden phrases: speed band, speed bands, eye level, change eye level, mix speeds, vary speeds, tunneling, work on recognition, maintain approach.",
-      "Each item must include concrete numbers (counts, %, or steps) and reference evidence.",
-      "Output STRICT JSON only. No markdown or commentary.",
-    ].join(" ");
+      "You are an elite MLB game-planning assistant.",
+      "Outputs must be operational, terse, and testable. No fluff or hedging.",
+      "Return STRICT JSON only with keys teaching_patterns and exploitable_patterns. No markdown or commentary.",
+      "Each item is a single-line instruction with an 'evidence' string; omit items with weak or inconsistent evidence.",
+      "Use only provided Metrics and literal Segments. Do not invent data.",
+      "Forbidden phrases: speed band(s), eye level, mix speeds, tunneling, recognition work, maintain approach, 'consider', 'maybe', 'could'.",
+    ].join(" ")
+;
 
     const user = [
       `Batter: ${batter}`,
@@ -105,35 +161,27 @@ export async function POST(req: NextRequest) {
       `Segments (last up to 20): ${JSON.stringify(segments.slice(-20))}`,
       "Produce a plan with this exact JSON schema:",
       JSON.stringify({
-        weaknesses: [
-          { id: "string", title: "string", evidence: ["string"], metric: "string", current: "string", target: "string", why_it_matters: "string" },
+        teaching_patterns: [
+          { instruction: "string", evidence: "string" }
         ],
-        fix_plan: {
-          one_session: [ { drill: "string", sets: "string", notes: "string", metric: "string", target: "string" } ],
-          take_home: [ { drill: "string", schedule: "string", equipment: "string", metric: "string", target: "string" } ],
-        },
-        exploit_plan: [ { situation: "string", tactic: "string", evidence: "string" } ],
-        kpis: [ { name: "string", current: 0, target: 0, timeframe: "1w" } ],
-        session_plan: { warmup: ["string"], main: ["string"], competition: ["string"] },
-        messaging: { cue: "string", mantra: "string" }
+        exploitable_patterns: [
+          { instruction: "string", evidence: "string" }
+        ]
       }),
       "Constraints (hard):",
-      "- Use only provided metrics and the literal segment texts. Do NOT invent pitch types, directions, or stats.",
-      "- If evidence is insufficient, output fewer items (arrays can be empty).",
-      "- Every item must include: a measurable baseline from Metrics or a quote/phrase from Segments, and a numeric target/timeframe.",
-      "- Tactics must be executable in one sentence. Forbid vague verbs (e.g., 'vary speed bands', 'eye level', 'mix speeds').",
-      "Reliability gates:",
-      "- Only propose an exploit if sample >= 12 PAs OR >= 8 balls-in-play, AND the observed rate deviates >= 15 percentage points from neutral (e.g., contact vs K, GB vs LD, first-pitch take/swing).",
-      "- For direction or fielder-based ideas, rely ONLY on explicit phrases inside Segments (e.g., 'grounds out to second base', 'to right field'). If direction is not present in Segments, omit direction-based positioning.",
-      "Positioning rules:",
-      "- If Segments show repeated right-side outs (e.g., 'to 1B/2B/right field'), recommend: 'infield: N steps toward 1B' where N = clamp(round((rate-0.50)*10), 1..3). Use 0 if not reliable.",
-      "- Depth changes must be step-based: 'infield depth: +1 step in' or 'outfield depth: +1 step shallow'. Never recommend extreme shifts unless rate >= 0.80 and sample criteria are met.",
-      "Pitch/location rules:",
-      "- You may only recommend location/count sequencing derived from Metrics (e.g., 'first-pitch take rate high -> auto-strike early', 'two-strike called K% high -> expand up-and-in then land edge'). Do NOT claim pitch types unless segments explicitly name them.",
-      "Examples (unacceptable -> acceptable):",
-      "- Unacceptable: 'Opponents: vary speed bands and eye level after 0-1.'",
-      "- Acceptable: '0-0: throw strike at knees (outer third). 0-1: repeat outer third. 2-2: expand 2-3 inches off outer edge.' (if supported by first-pitch take rate and miss-on-swings).",
-    ].join("\n\n");
+      "- Use only provided Metrics and literal Segments. Do NOT invent directions or stats.",
+      "- Arrays can be empty if evidence is weak.",
+      "- teaching_patterns: each item is a single-line drill/coaching cue with how-to (imperative). Include minimal setup/reps when helpful.",
+      "- exploitable_patterns: each item is a single-line in-game tactic (count+location and/or positioning).",
+      "- Each item must reference evidence concisely in 'evidence' (e.g., '80% first‑pitch takes; high whiff up').",
+      "- No hedging or vague verbs (e.g., vary speeds, eye level).",
+      "Style exemplars (format only; do not copy numbers):",
+      "Teaching: 'Delay contact on outer‑third — oppo‑delay tee drill: tee outer‑third, contact +2–3 in later; 3×10. Evidence: high called strikes outer edge; rollovers inside.'",
+      "Teaching: 'Two‑strike battle — choke up 1/2‑in, widen stance; goal ≥2 fouls before ball in play. Evidence: high two‑strike K%.'",
+      "Exploit: '0‑0 outer third for strike; then below‑zone off‑speed; IF DP depth; OF normal. Evidence: 80% first‑pitch takes; weak GB rate.'",
+      "Exploit: 'Bust FB up 0‑1; back‑door breaker when behind; corners guard lines late. Evidence: 57% whiff high FB; oppo flares.'",
+    ].join("\n\n")
+;
 
     const raw = await completeJSON({
       model: "gpt-5-mini",
@@ -161,6 +209,9 @@ export async function POST(req: NextRequest) {
     if (!plan || typeof plan !== "object") {
       return NextResponse.json({ ok: false, error: "Model output not JSON", raw }, { status: 502 });
     }
+
+    // Sanitize patterns to remain single-line and concise before returning
+    plan = enforcePatternsStyle(plan)
 
     return NextResponse.json({ ok: true, batter, metrics, plan });
   } catch (e: any) {

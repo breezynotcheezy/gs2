@@ -13,6 +13,19 @@ function pct(n: number) {
   return `${Math.round(n * 100)}%`
 }
 
+function confClass(t: string) {
+  switch (t) {
+    case "High":
+      return "text-emerald-300 border-emerald-400/40"
+    case "Medium-High":
+      return "text-lime-300 border-lime-400/40"
+    case "Medium":
+      return "text-amber-300 border-amber-400/40"
+    default:
+      return "text-red-300 border-red-400/40"
+  }
+}
+
 export default function PlanPage() {
   const params = useSearchParams()
   const router = useRouter()
@@ -119,6 +132,29 @@ export default function PlanPage() {
         {/* Plan sections */}
         {plan && (
           <div className="space-y-6">
+            {/* Recommendations - concise three-line items */}
+            {Array.isArray(plan.recommendations) && plan.recommendations.length > 0 && (
+              <Card className="bg-gradient-to-br from-black/90 to-gray-900/90 border-amber-500/20">
+                <CardHeader>
+                  <div className="flex items-center gap-2"><Target className="w-4 h-4 text-amber-400" /><CardTitle className="text-amber-100 font-mono">Recommendations</CardTitle></div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {plan.recommendations.map((r: any, i: number) => (
+                    <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/40 rounded">
+                      <div className="text-[10px] font-mono text-amber-300 uppercase tracking-wide">Pitch Sequence Against</div>
+                      <div className="text-sm font-mono text-amber-100">{r.seq}</div>
+                      <div className="mt-1 text-[10px] font-mono text-amber-300 uppercase tracking-wide">Defensive Alignment & Notes</div>
+                      <div className="text-sm font-mono text-amber-100">{r.defense}</div>
+                      <div className="mt-1 text-[10px] font-mono text-amber-300 uppercase tracking-wide">Confidence</div>
+                      <div className="text-sm font-mono text-gray-300 flex items-center gap-2">
+                        <Badge variant="outline" className={`text-[10px] ${confClass(r.confidence_tier)}`}>{r.confidence_tier || ""}</Badge>
+                        <span>{r.confidence_line}</span>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
             {/* Weaknesses */}
             <Card className="bg-gradient-to-br from-black/90 to-gray-900/90 border-amber-500/20">
               <CardHeader>

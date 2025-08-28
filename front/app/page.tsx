@@ -5,13 +5,12 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Upload } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
-import { Brain, BarChart3, Zap, Activity, Target, TrendingUp, AlertTriangle } from "lucide-react"
+import { Brain, BarChart3, Zap, Activity, Target, TrendingUp, AlertTriangle, Trash } from "lucide-react"
 import type { PlateAppearanceCanonical } from "@gs-src/core/canon/types"
 
 // Persistent session store for aggregated plays within the tab session
@@ -90,6 +89,7 @@ export default function GreenSeamDashboard() {
   const [result, setResult] = useState<any>(null)
   const [resultFilter, setResultFilter] = useState<"all" | "so" | "bb" | "hr">("all")
   const [minPA, setMinPA] = useState<number>(0)
+  const [pasteText, setPasteText] = useState<string>("")
   const router = useRouter()
 
   // On mount, load any existing session so the dashboard reflects all accumulated plays
@@ -121,6 +121,7 @@ export default function GreenSeamDashboard() {
         model: "gpt-5-mini",
         timeoutMs: 45000,
         verbose: false,
+        deterministic: false,
       }
 
       const resp = await fetch("/api/extract", {
@@ -169,6 +170,15 @@ export default function GreenSeamDashboard() {
       await runWithText(trimmed)
     }
   }, [readTextFromFile, runWithText])
+
+  const ingestPaste = useCallback(async () => {
+    const trimmed = (pasteText || "").trim()
+    if (!trimmed) {
+      setStatus("Paste is empty. Please paste play-by-play text.")
+      return
+    }
+    await runWithText(trimmed)
+  }, [pasteText, runWithText])
 
   // Helpers for display
   const prettyResult = (r?: string) => {
@@ -373,6 +383,26 @@ export default function GreenSeamDashboard() {
     }
   }, [router])
 
+  const removeBatter = useCallback((name: string) => {
+    try {
+      const sess = loadSession()
+      const prevPlays = Array.isArray(sess?.plays) ? sess!.plays : []
+      const before = prevPlays.length
+      const remaining = prevPlays.filter((p) => (p.pa as any)?.batter !== name)
+      const removed = before - remaining.length
+      if (removed > 0) {
+        const nextSess: StoredSession = { version: 1, plays: remaining }
+        saveSession(nextSess)
+        setResult({ ok: true, data: remaining.map((p) => p.pa), segments: remaining.map((p) => p.seg) })
+        setStatus(`Removed ${removed} plays for ${name}. Session total: ${remaining.length}.`)
+      } else {
+        setStatus(`No plays found for ${name}.`)
+      }
+    } catch (e: any) {
+      setStatus(`Error removing ${name}: ${String(e?.message || e)}`)
+    }
+  }, [])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black">
       <main className="container mx-auto px-4 py-6">
@@ -397,6 +427,38 @@ export default function GreenSeamDashboard() {
               {running ? "Processing..." : "UPLOAD DATA"}
             </Label>
           </Button>
+        </div>
+
+        {/* Paste Text Ingest (same pipeline as file upload) */}
+        <div className="mx-auto w-full max-w-3xl -mt-4 mb-6">
+          <Label htmlFor="paste" className="text-xs font-mono text-gray-400 mb-1 inline-block">Paste Data</Label>
+          <Textarea
+            id="paste"
+            placeholder="Paste play-by-play text here..."
+            className="bg-black/50 border-amber-500/20 text-amber-100 placeholder:text-gray-500"
+            rows={6}
+            value={pasteText}
+            onChange={(e) => setPasteText((e.target as HTMLTextAreaElement).value)}
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <Button
+              onClick={ingestPaste}
+              disabled={running}
+              variant="outline"
+              className="gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-4 py-2 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
+            >
+              {running ? "Processing..." : "INGEST TEXT"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-xs font-mono text-gray-400"
+              onClick={() => setPasteText("")}
+            >
+              Clear
+            </Button>
+            <span className="text-[11px] font-mono text-gray-500">Duplicates are auto-skipped; new plays merge into the current session.</span>
+          </div>
         </div>
 
         <div className="text-xs font-mono text-amber-300 mb-3 text-center">{status}</div>
@@ -525,7 +587,6 @@ export default function GreenSeamDashboard() {
                 className="relative overflow-hidden bg-gradient-to-br from-gray-900/95 via-black/90 to-gray-900/95 backdrop-blur-xl border border-amber-500/20 hover:border-amber-400/40 transition-all duration-500 shadow-2xl hover:shadow-amber-500/25 hover:scale-[1.02] transform"
               >
                 <CardHeader className="pb-4 relative">
-                  <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-yellow-500/5 rounded-t-lg"></div>
                   <div className="relative flex items-start justify-between">
                     <div>
                       <CardTitle className="text-xl text-amber-100 font-mono font-bold mb-1 drop-shadow-lg">
@@ -538,7 +599,23 @@ export default function GreenSeamDashboard() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-gray-400 font-mono mb-1">CONTACT RATE</div>
+                      <div className="flex items-center justify-end gap-2 mb-1">
+                        <Button
+                          size="icon"
+                          variant="destructive"
+                          className="h-8 w-8"
+                          aria-label={`Delete ${batter.name}`}
+                          title={`Delete ${batter.name}`}
+                          onClick={() => {
+                            if (window.confirm(`Remove all plays for ${batter.name}? This cannot be undone in this session.`)) {
+                              removeBatter(batter.name)
+                            }
+                          }}
+                        >
+                          <Trash className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <div className="text-xs text-gray-400 font-mono">CONTACT RATE</div>
                       <div className="text-lg font-mono font-bold text-amber-300">
                         {(batter.totals.contactRate * 100).toFixed(0)}%
                       </div>
@@ -616,37 +693,7 @@ export default function GreenSeamDashboard() {
                     )}
                   </div>
 
-                  {/* Original Segments (toggle) */}
-                  {batter.segments.length > 0 && (
-                    <div className="space-y-2">
-                      <Collapsible>
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-mono text-gray-400">ORIGINAL SEGMENTS</p>
-                          <CollapsibleTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="px-2 py-1 h-7 gap-1 bg-gray-800/50 border-gray-600/30 text-gray-300 hover:bg-gray-700/50 hover:border-gray-500/50 font-mono text-[10px]"
-                            >
-                              Toggle
-                            </Button>
-                          </CollapsibleTrigger>
-                        </div>
-                        <CollapsibleContent>
-                          <div className="mt-2 space-y-2">
-                            {batter.segments.map((seg, idx) => (
-                              <div
-                                key={idx}
-                                className="p-2 bg-gray-800/30 border border-gray-700/30 rounded text-[11px] font-mono text-gray-300"
-                              >
-                                {seg}
-                              </div>
-                            ))}
-                          </div>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    </div>
-                  )}
+                  {/* Original Segments removed per request */}
 
                   {/* AI Recommendations */}
                   <div className="space-y-3">

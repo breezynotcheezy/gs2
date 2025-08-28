@@ -283,8 +283,37 @@ export async function segmentGameText(
       return [];
     };
 
-    // For small inputs, single call
+    // For small baseline groups, fall back to raw char-based chunking to avoid a single giant prompt
+    // This kicks in when the deterministic baseline is tiny relative to the raw text size.
     if (groups.length <= 1) {
+      const needsFallback = detBase.length <= 5 && text.length > MAX_GROUP_CHARS;
+      if (needsFallback) {
+        const tnorm = text.replace(/\r\n?/g, "\n").replace(/\|/g, ". ").replace(/\s+/g, " ").trim();
+        const sentences = tnorm.split(/(?<=[.!?])\s+/);
+        const rawChunks: string[] = [];
+        let buf = "";
+        for (const sent of sentences) {
+          const add = (buf ? " " : "") + sent;
+          if (buf.length + add.length > MAX_GROUP_CHARS && buf.length > 0) {
+            rawChunks.push(buf);
+            buf = sent;
+          } else {
+            buf += add;
+          }
+        }
+        if (buf) rawChunks.push(buf);
+        if (rawChunks.length > 1) {
+          const merged: string[] = [];
+          for (let i = 0; i < rawChunks.length; i++) {
+            const chunkText = rawChunks[i];
+            if (verbose) console.error(`[segmentGameText] Fallback chunk ${i + 1}/${rawChunks.length} (char-based)`);
+            const segs = await callOne(chunkText, 0);
+            merged.push(...segs);
+          }
+          return merged;
+        }
+      }
+      // Single call as final fallback
       return await callOne(text, detBase.length);
     }
 

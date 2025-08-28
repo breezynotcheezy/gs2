@@ -63,6 +63,7 @@ export default function ExtractPage() {
         model,
         timeoutMs: Number(timeoutMs || 45000),
         verbose,
+        deterministic: false,
       }
 
       const resp = await fetch("/api/extract", {
