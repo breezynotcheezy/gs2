@@ -4,8 +4,8 @@ import { Inter, Orbitron } from "next/font/google"
 import "./globals.css"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/auth"
-import SignOutButton from "@/components/auth/SignOutButton"
-import LoginDialogButton from "@/components/auth/LoginDialogButton"
+import { ThemeProvider } from "@/components/theme-provider"
+import AuthProvider from "@/components/auth/AuthProvider"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -35,13 +35,18 @@ export default async function RootLayout({
 }) {
   const session = await getServerSession(authOptions)
   return (
-    <html lang="en" className={`${inter.variable} ${orbitron.variable} antialiased`}>
+    <html lang="en" className={`${inter.variable} ${orbitron.variable} antialiased`} suppressHydrationWarning>
       <body className="font-sans">
-        {/* Fixed top-right auth control; no top bar */}
-        <div className="fixed top-4 right-4 z-50">
-          {session?.user ? <SignOutButton /> : <LoginDialogButton />}
-        </div>
-        <main>{children}</main>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <AuthProvider session={session}>
+            <main>{children}</main>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

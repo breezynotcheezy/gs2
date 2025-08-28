@@ -322,19 +322,13 @@ export default function GreenSeamDashboard() {
                 <div className="flex gap-2 pt-3">
                   <Button
                     variant="outline"
-                    size="sm"
-                    className="flex-1 gap-2 bg-amber-500/10 border-amber-500/30 text-amber-100 hover:bg-amber-500/20 hover:border-amber-400/50 font-mono text-xs transition-all duration-300 shadow-lg hover:shadow-amber-500/25"
+                    size="lg"
+                    aria-label={`View full analysis for ${batter.name}`}
+                    title="View Full Analysis"
+                    className="flex-1 w-full gap-3 bg-amber-500/20 border-amber-500/40 text-amber-100 hover:bg-amber-500/30 hover:border-amber-400/60 font-mono text-sm px-4 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/30 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg"
                   >
-                    <TrendingUp className="w-3 h-3" />
+                    <TrendingUp className="w-5 h-5" />
                     FULL ANALYSIS
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 gap-2 bg-gray-800/50 border-gray-600/30 text-gray-300 hover:bg-gray-700/50 hover:border-gray-500/50 font-mono text-xs transition-all duration-300"
-                  >
-                    <BarChart3 className="w-3 h-3" />
-                    DETAILED STATS
                   </Button>
                 </div>
               </CardContent>

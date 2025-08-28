@@ -15,10 +15,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  experimental: {
-    // Allow output file tracing to include files from the repo root (monorepo-friendly)
-    outputFileTracingRoot: path.join(__dirname, '..'),
-  },
+  outputFileTracingRoot: path.join(__dirname, '..'),
+  experimental: {},
   webpack: (config) => {
     // Alias to import backend/core code from the repo root
     // Point to compiled JS so ".js" ESM specifiers inside core resolve during Next bundling

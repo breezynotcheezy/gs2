@@ -1,17 +1,16 @@
-"use client"
+ 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Upload } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Brain, BarChart3, Zap, Activity, Target, TrendingUp, AlertTriangle, Trash } from "lucide-react"
-import type { PlateAppearanceCanonical } from "@gs-src/core/canon/types"
+ import React, { useCallback, useEffect, useMemo, useState } from 'react'
+ import { useRouter } from 'next/navigation'
+ import { Button } from '@/components/ui/button'
+ import { Input } from '@/components/ui/input'
+ import { Label } from '@/components/ui/label'
+ import { Textarea } from '@/components/ui/textarea'
+ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+ import { Separator } from '@/components/ui/separator'
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+ import { Upload, Brain, BarChart3, Zap, Activity, Target, TrendingUp, AlertTriangle, Trash } from 'lucide-react'
+ import type { PlateAppearanceCanonical } from '@gs-src/core/canon/types'
 
 // Persistent session store for aggregated plays within the tab session
 type StoredPA = { pa: PlateAppearanceCanonical; seg: string; segKey: string; canonKey: string }
@@ -465,26 +464,14 @@ export default function GreenSeamDashboard() {
 
         {/* Filters and quick summary */}
         {result?.ok && batters.length > 0 && (
-          <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-3">
+
             <div>
               <Label className="text-xs font-mono text-gray-400 mb-1 inline-block">Result Filter</Label>
               <Select value={resultFilter} onValueChange={(v) => setResultFilter(v as any)}>
                 <SelectTrigger className="bg-black/50 border-amber-500/20 text-amber-100">
                   <SelectValue placeholder="All Results" />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-900/95 border-amber-500/20">
-                  <SelectItem value="all">All Results</SelectItem>
-                  <SelectItem value="so">Strikeouts (SO)</SelectItem>
-                  <SelectItem value="bb">Walks (BB)</SelectItem>
-                  <SelectItem value="hr">Home Runs (HR)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs font-mono text-gray-400 mb-1 inline-block">Min PAs</Label>
-              <Input
-                type="number"
-                min={0}
+{{ ... }}
                 value={minPA}
                 onChange={(e) => setMinPA(Number((e.target as HTMLInputElement).value || 0))}
                 className="bg-black/50 border-amber-500/20 text-amber-100"
@@ -506,6 +493,23 @@ export default function GreenSeamDashboard() {
                 </div>
               </div>
             </div>
+            <div className="flex items-end justify-end">
+              <Button
+                onClick={() => {
+                  if (window.confirm('Delete all player cards and clear this session?')) {
+                    clearAll()
+                  }
+                }}
+                disabled={running || (batters.length === 0)}
+                variant="destructive"
+                className="gap-2"
+                aria-label="Delete all player cards"
+                title="Delete all player cards"
+              >
+                <Trash className="w-4 h-4" />
+                Delete All
+              </Button>
+            </div>
           </div>
         )}
 
@@ -513,6 +517,7 @@ export default function GreenSeamDashboard() {
         {result?.ok && batters.length > 0 && (
           <div className="grid grid-cols-4 gap-4 mb-10">
             <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
+{{ ... }}
               <CardContent className="p-5">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-amber-500/20 rounded-lg">
@@ -741,20 +746,14 @@ export default function GreenSeamDashboard() {
                   <div className="flex gap-2 pt-3">
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="flex-1 gap-2 bg-amber-500/10 border-amber-500/30 text-amber-100 hover:bg-amber-500/20 hover:border-amber-400/50 font-mono text-xs transition-all duration-300 shadow-lg hover:shadow-amber-500/25"
+                      size="lg"
+                      aria-label={`View full analysis for ${batter.name}`}
+                      title="View Full Analysis"
+                      className="flex-1 w-full gap-3 bg-amber-500/20 border-amber-500/40 text-amber-100 hover:bg-amber-500/30 hover:border-amber-400/60 font-mono text-sm px-4 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/30 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg"
                       onClick={() => goFullAnalysis(batter)}
                     >
-                      <TrendingUp className="w-3 h-3" />
+                      <TrendingUp className="w-5 h-5" />
                       FULL ANALYSIS
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 gap-2 bg-gray-800/50 border-gray-600/30 text-gray-300 hover:bg-gray-700/50 hover:border-gray-500/50 font-mono text-xs transition-all duration-300"
-                    >
-                      <BarChart3 className="w-3 h-3" />
-                      DETAILED STATS
                     </Button>
                   </div>
                 </CardContent>
