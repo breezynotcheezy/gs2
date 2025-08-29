@@ -16,8 +16,16 @@ const nextConfig = {
     unoptimized: true,
   },
   output: 'standalone',
+  trailingSlash: true,
   experimental: {
-    outputFileTracingRoot: path.join(__dirname, '..')
+    outputFileTracingRoot: path.join(__dirname, '..'),
+    outputFileTracingExcludes: {
+      '*': [
+        'node_modules/**/@swc/core-linux-x64-gnu',
+        'node_modules/**/@swc/core-linux-x64-musl',
+        'node_modules/**/@esbuild/linux-x64'
+      ]
+    }
   },
   webpack: (config, { isServer }) => {
     // Aliases for import resolution
