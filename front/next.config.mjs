@@ -16,10 +16,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  experimental: {
-    outputFileTracingRoot: path.join(__dirname, '..'),
-    serverComponentsExternalPackages: ['@prisma/client', 'bcryptjs']
-  },
+  outputFileTracingRoot: path.join(__dirname, '..'),
+  serverComponentsExternalPackages: ['@prisma/client', 'bcryptjs'],
+  experimental: {},
   distDir: '.next',
   trailingSlash: true,
   webpack: (config, { isServer }) => {
