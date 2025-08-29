@@ -1,17 +1,8 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "front/package.json",
-      "use": "@vercel/next"
-    }
-  ],
-  "build": {
-    "env": {
-      "NODE_ENV": "production"
-    }
-  },
-  "installCommand": "cd front && pnpm install --no-frozen-lockfile",
-  "buildCommand": "cd front && pnpm run build",
-  "outputDirectory": "front/.next"
-}
+        "version": 2,
+        "builds": [
+          { "src": "front/package.json", "use": "@vercel/next" }
+        ],
+        "installCommand": "pnpm -w install --no-frozen-lockfile"
+      }
+      
