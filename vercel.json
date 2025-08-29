@@ -1,6 +1,12 @@
 {
   "version": 2,
-  "buildCommand": "cd front && pnpm install && pnpm run build",
-  "outputDirectory": "front/.next",
-  "framework": "nextjs"
+  "builds": [
+    {
+      "src": "front/package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "/$1" }
+  ]
 }

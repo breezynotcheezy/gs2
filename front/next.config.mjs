@@ -16,6 +16,7 @@ const nextConfig = {
     unoptimized: true,
   },
   output: 'standalone',
+  distDir: '.next',
   trailingSlash: true,
   webpack: (config, { isServer }) => {
     // Aliases for import resolution
