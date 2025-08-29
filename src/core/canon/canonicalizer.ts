@@ -1,14 +1,10 @@
 import { completeJSON } from "../llm";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { GameContext, PlateAppearanceCanonical } from "./types";
 import { validatePlateAppearanceCanonical } from "./validator";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const schemaPath = path.join(__dirname, "schema", "plate_appearance_canonical.schema.json");
-const schema = JSON.parse(fs.readFileSync(schemaPath, "utf-8"));
+// Bundle the JSON schema at build-time; avoid runtime fs access in serverless
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore - JSON module import
+import schema from "./schema/plate_appearance_canonical.schema.json";
 
 export interface CanonicalizeOptions {
   maxRetries?: number; // default 3
