@@ -20,10 +20,13 @@ const nextConfig = {
     outputFileTracingRoot: path.join(__dirname, '..')
   },
   webpack: (config, { isServer }) => {
-    // Alias for @/ to point to src/
+    // Aliases for import resolution
+    // '@/*' -> front/* (components, app, lib, etc.)
+    // '@gs-src/*' -> repo root src/* (server utilities shared to frontend)
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': path.join(__dirname, 'src')
+      '@': __dirname,
+      '@gs-src': path.join(__dirname, '..', 'src'),
     };
 
     // Handle Node.js modules that shouldn't be bundled
