@@ -19,11 +19,11 @@
   "engines": {
     "node": ">=18.17"
   },
+  "workspaces": [
+    "front"
+  ],
   "dependencies": {
-    "ajv": "^8.17.1",
     "commander": "^12.1.0",
-    "dotenv": "^16.4.5",
-    "openai": "^4.55.0",
     "yaml": "^2.5.1"
   },
   "devDependencies": {

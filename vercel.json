@@ -3,7 +3,11 @@
   "builds": [
     {
       "src": "front/package.json",
-      "use": "@vercel/next"
+      "use": "@vercel/next",
+      "config": {
+        "installCommand": "cd front && pnpm install --no-frozen-lockfile",
+        "buildCommand": "cd front && pnpm run build"
+      }
     }
   ],
   "build": {
@@ -11,6 +15,6 @@
       "NODE_VERSION": "20"
     }
   },
-  "installCommand": "pnpm install --no-frozen-lockfile",
+  "installCommand": "cd front && pnpm install --no-frozen-lockfile",
   "buildCommand": "cd front && pnpm run build"
 }
