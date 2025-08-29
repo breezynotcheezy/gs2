@@ -6,6 +6,8 @@ const __dirname = path.dirname(__filename);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Base path is now handled by Vercel configuration
+  output: 'standalone',
   eslint: {
     ignoreDuringBuilds: true,
   },

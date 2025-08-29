@@ -2,19 +2,33 @@
   "version": 2,
   "builds": [
     {
-      "src": "front/package.json",
-      "use": "@vercel/next",
+      "src": "package.json",
+      "use": "@vercel/static-build",
       "config": {
-        "installCommand": "cd front && pnpm install --no-frozen-lockfile",
-        "buildCommand": "cd front && pnpm run build"
+        "distDir": "front/.next"
       }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/_next/static/(.*)",
+      "dest": "/_next/static/$1"
+    },
+    {
+      "src": "/_next/data/([^/]+?)/(.*)",
+      "dest": "/_next/data/$1/$2"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
     }
   ],
   "build": {
     "env": {
+      "NODE_ENV": "production",
       "NODE_VERSION": "20"
     }
   },
-  "installCommand": "cd front && pnpm install --no-frozen-lockfile",
-  "buildCommand": "cd front && pnpm run build"
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "buildCommand": "pnpm run vercel-build"
 }
