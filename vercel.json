@@ -1,7 +1,21 @@
 {
-  "buildCommand": "cd front && pnpm install && pnpm build",
-  "outputDirectory": "front/.next",
-  "framework": "nextjs",
-  "installCommand": "cd front && pnpm install",
-  "regions": ["iad1"]
+  "version": 2,
+  "builds": [
+    {
+      "src": "front/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "includeFiles": [
+          "front/.next/**",
+          "front/public/**"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/front/$1"
+    }
+  ]
 }
