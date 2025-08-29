@@ -1,15 +1,6 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "front/package.json",
-      "use": "@vercel/next",
-      "config": { "distDir": ".next" }
-    }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "front/api/$1" },
-    { "src": "/_next/static/(.*)", "dest": "front/_next/static/$1" },
-    { "src": "/(.*)", "dest": "front/$1" }
-  ]
+  "buildCommand": "pnpm install --no-frozen-lockfile && pnpm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs"
 }
