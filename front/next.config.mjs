@@ -16,6 +16,9 @@ const nextConfig = {
     unoptimized: true,
   },
   output: 'standalone',
+  experimental: {
+    outputFileTracingRoot: path.join(__dirname, '..')
+  },
   distDir: '.next',
   trailingSlash: true,
   webpack: (config, { isServer }) => {

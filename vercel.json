@@ -2,11 +2,19 @@
   "version": 2,
   "builds": [
     {
-      "src": "front/package.json",
-      "use": "@vercel/next"
+      "src": "package.json",
+      "use": "@vercel/next",
+      "config": {
+        "installCommand": "pnpm install --no-frozen-lockfile"
+      }
     }
   ],
   "routes": [
     { "src": "/(.*)", "dest": "/$1" }
-  ]
+  ],
+  "build": {
+    "env": {
+      "NODE_VERSION": "20"
+    }
+  }
 }
