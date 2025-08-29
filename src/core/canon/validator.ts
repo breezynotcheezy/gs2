@@ -1,13 +1,10 @@
 import Ajv from "ajv";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { PlateAppearanceCanonical } from "./types";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const schemaPath = path.join(__dirname, "schema", "plate_appearance_canonical.schema.json");
-const schema = JSON.parse(fs.readFileSync(schemaPath, "utf-8"));
+// Import JSON schema at build-time so it is bundled into the serverless function
+// This avoids runtime fs access which is unavailable in Vercel edge/serverless bundles
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore - JSON module import
+import schema from "./schema/plate_appearance_canonical.schema.json";
 
 // Ajv typing can be tricky under NodeNext; cast to any for construction
 const ajv = new (Ajv as any)({ allErrors: true, strict: true, allowUnionTypes: true });
