@@ -1,30 +1,17 @@
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { Brain, Target, TrendingUp, Home, Activity } from "lucide-react"
-import type { PlateAppearanceCanonical } from "@gs-src/core/canon/types"
+import { Target, TrendingUp, Home } from "lucide-react"
 
 function pct(n: number) {
   return `${Math.round(n * 100)}%`
 }
 
-function confClass(t: string) {
-  switch (t) {
-    case "High":
-      return "text-emerald-300 border-emerald-400/40"
-    case "Medium-High":
-      return "text-lime-300 border-lime-400/40"
-    case "Medium":
-      return "text-amber-300 border-amber-400/40"
-    default:
-      return "text-red-300 border-red-400/40"
-  }
-}
+//
 
 export default function PlanPage() {
   const params = useSearchParams()
@@ -132,168 +119,63 @@ export default function PlanPage() {
         {/* Plan sections */}
         {plan && (
           <div className="space-y-6">
-            {/* Recommendations - concise three-line items */}
-            {Array.isArray(plan.recommendations) && plan.recommendations.length > 0 && (
-              <Card className="bg-gradient-to-br from-black/90 to-gray-900/90 border-amber-500/20">
-                <CardHeader>
-                  <div className="flex items-center gap-2"><Target className="w-4 h-4 text-amber-400" /><CardTitle className="text-amber-100 font-mono">Recommendations</CardTitle></div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {plan.recommendations.map((r: any, i: number) => (
-                    <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/40 rounded">
-                      <div className="text-[10px] font-mono text-amber-300 uppercase tracking-wide">Pitch Sequence Against</div>
-                      <div className="text-sm font-mono text-amber-100">{r.seq}</div>
-                      <div className="mt-1 text-[10px] font-mono text-amber-300 uppercase tracking-wide">Defensive Alignment & Notes</div>
-                      <div className="text-sm font-mono text-amber-100">{r.defense}</div>
-                      <div className="mt-1 text-[10px] font-mono text-amber-300 uppercase tracking-wide">Confidence</div>
-                      <div className="text-sm font-mono text-gray-300 flex items-center gap-2">
-                        <Badge variant="outline" className={`text-[10px] ${confClass(r.confidence_tier)}`}>{r.confidence_tier || ""}</Badge>
-                        <span>{r.confidence_line}</span>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-            {/* Weaknesses */}
+            {/* Training Recommendations */}
             <Card className="bg-gradient-to-br from-black/90 to-gray-900/90 border-amber-500/20">
               <CardHeader>
-                <div className="flex items-center gap-2"><Target className="w-4 h-4 text-amber-400" /><CardTitle className="text-amber-100 font-mono">Priority Weaknesses</CardTitle></div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-4 h-4 text-amber-400" />
+                    <CardTitle className="text-amber-100 font-mono">Training Recommendations</CardTitle>
+                  </div>
+                  <Badge className="bg-amber-500/20 text-amber-200 border border-amber-400/40 font-mono text-[10px]">
+                    {(Array.isArray(plan.teaching_patterns) ? plan.teaching_patterns.length : 0)} items
+                  </Badge>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {(plan.weaknesses || []).map((w: any, i: number) => (
-                  <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/40 rounded">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-mono text-amber-200">{w.title}</div>
-                      <Badge variant="outline" className="text-[10px] font-mono">{w.metric}: {w.current} → {w.target}</Badge>
+                {Array.isArray(plan.teaching_patterns) && plan.teaching_patterns.length > 0 ? (
+                  plan.teaching_patterns.map((t: any, i: number) => (
+                    <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/40 rounded">
+                      <div className="text-sm font-mono text-amber-100">{t.instruction}</div>
+                      {t.evidence ? (
+                        <div className="mt-1 text-[11px] font-mono text-gray-300">Evidence: {t.evidence}</div>
+                      ) : null}
                     </div>
-                    {Array.isArray(w.evidence) && w.evidence.length > 0 && (
-                      <div className="mt-2 text-[11px] font-mono text-gray-300">Evidence: {w.evidence.join(" • ")}</div>
-                    )}
-                    {w.why_it_matters && (
-                      <div className="mt-1 text-[11px] font-mono text-gray-400">Why: {w.why_it_matters}</div>
-                    )}
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <div className="text-sm font-mono text-gray-400">No grounded training recommendations.</div>
+                )}
               </CardContent>
             </Card>
 
-            {/* Fix Plan */}
+            {/* Advanced Analysis (Exploits) */}
             <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20">
               <CardHeader>
-                <div className="flex items-center gap-2"><Brain className="w-4 h-4 text-amber-400" /><CardTitle className="text-amber-100 font-mono">Fix Plan</CardTitle></div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-amber-400" />
+                    <CardTitle className="text-amber-100 font-mono">Advanced Analysis (Exploits)</CardTitle>
+                  </div>
+                  <Badge className="bg-amber-500/20 text-amber-200 border border-amber-400/40 font-mono text-[10px]">
+                    {(Array.isArray(plan.exploitable_patterns) ? plan.exploitable_patterns.length : 0)} items
+                  </Badge>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div className="text-xs font-mono text-gray-400 mb-2">One Session</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {(plan.fix_plan?.one_session || []).map((d: any, i: number) => (
-                      <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/40 rounded">
-                        <div className="text-sm font-mono text-amber-200">{d.drill}</div>
-                        <div className="text-[11px] font-mono text-gray-300">Sets: {d.sets}</div>
-                        <div className="text-[11px] font-mono text-gray-400">{d.notes}</div>
-                        <div className="text-[10px] font-mono text-gray-500 mt-1">KPI: {d.metric} → {d.target}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <Separator className="bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
-                <div>
-                  <div className="text-xs font-mono text-gray-400 mb-2">Take‑Home</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {(plan.fix_plan?.take_home || []).map((d: any, i: number) => (
-                      <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/40 rounded">
-                        <div className="text-sm font-mono text-amber-200">{d.drill}</div>
-                        <div className="text-[11px] font-mono text-gray-300">Schedule: {d.schedule}</div>
-                        <div className="text-[11px] font-mono text-gray-400">Equipment: {d.equipment}</div>
-                        <div className="text-[10px] font-mono text-gray-500 mt-1">KPI: {d.metric} → {d.target}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              <CardContent className="space-y-3">
+                {Array.isArray(plan.exploitable_patterns) && plan.exploitable_patterns.length > 0 ? (
+                  plan.exploitable_patterns.map((e: any, i: number) => (
+                    <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/40 rounded">
+                      <div className="text-sm font-mono text-amber-100">{e.instruction}</div>
+                      {e.evidence ? (
+                        <div className="mt-1 text-[11px] font-mono text-gray-300">Evidence: {e.evidence}</div>
+                      ) : null}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm font-mono text-gray-400">No grounded exploit opportunities detected.</div>
+                )}
               </CardContent>
             </Card>
-
-            {/* Exploit Plan */}
-            {Array.isArray(plan.exploit_plan) && plan.exploit_plan.length > 0 && (
-              <Card className="bg-gradient-to-br from-black/90 to-gray-900/90 border-amber-500/20">
-                <CardHeader>
-                  <div className="flex items-center gap-2"><TrendingUp className="w-4 h-4 text-amber-400" /><CardTitle className="text-amber-100 font-mono">Game Exploits</CardTitle></div>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {plan.exploit_plan.map((e: any, i: number) => (
-                    <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/40 rounded">
-                      <div className="text-sm font-mono text-amber-200">{e.situation}</div>
-                      <div className="text-[11px] font-mono text-gray-300">Tactic: {e.tactic}</div>
-                      <div className="text-[11px] font-mono text-gray-400">Evidence: {e.evidence}</div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* KPIs */}
-            {Array.isArray(plan.kpis) && plan.kpis.length > 0 && (
-              <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20">
-                <CardHeader>
-                  <div className="flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" /><CardTitle className="text-amber-100 font-mono">KPIs</CardTitle></div>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {plan.kpis.map((k: any, i: number) => (
-                    <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/40 rounded">
-                      <div className="text-sm font-mono text-amber-200">{k.name}</div>
-                      <div className="text-[11px] font-mono text-gray-300">{k.current} → {k.target} in {k.timeframe}</div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Session Plan and Messaging */}
-            {(plan.session_plan || plan.messaging) && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                <Card className="lg:col-span-2 bg-gradient-to-br from-black/90 to-gray-900/90 border-amber-500/20">
-                  <CardHeader>
-                    <CardTitle className="text-amber-100 font-mono">Session Plan</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[12px] font-mono">
-                    <div>
-                      <div className="text-gray-400 mb-1">Warmup</div>
-                      <ul className="space-y-1 list-disc pl-4 text-gray-300">
-                        {(plan.session_plan?.warmup || []).map((x: string, i: number) => <li key={i}>{x}</li>)}
-                      </ul>
-                    </div>
-                    <div>
-                      <div className="text-gray-400 mb-1">Main</div>
-                      <ul className="space-y-1 list-disc pl-4 text-gray-300">
-                        {(plan.session_plan?.main || []).map((x: string, i: number) => <li key={i}>{x}</li>)}
-                      </ul>
-                    </div>
-                    <div>
-                      <div className="text-gray-400 mb-1">Competition</div>
-                      <ul className="space-y-1 list-disc pl-4 text-gray-300">
-                        {(plan.session_plan?.competition || []).map((x: string, i: number) => <li key={i}>{x}</li>)}
-                      </ul>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20">
-                  <CardHeader>
-                    <CardTitle className="text-amber-100 font-mono">Cues</CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-[12px] font-mono text-gray-300 space-y-2">
-                    <div>
-                      <div className="text-gray-400 mb-1">Cue</div>
-                      <div>{plan.messaging?.cue || "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400 mb-1">Mantra</div>
-                      <div>{plan.messaging?.mantra || "—"}</div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
           </div>
         )}
       </main>

@@ -26,7 +26,7 @@ function extractJSON(text: string): any {
 }
 
 // Helper: extract short-name batter and pitcher deterministically from a PA text
-function extractNamesFromText(s: string): { batter?: string; pitcher?: string } {
+function extractNamesFromText(s: string): { batter?: string; pitcher?: string; batterSource?: "verb" | "cue"; pitcherSource?: "verb" | "cue" } {
   const nameToken = "([A-Z]{1,2})\\s+([A-Z]{1,2})"; // spaced initials
   const initialsPair = "([A-Z])([A-Z])"; // compact initials
   const verbs = [
@@ -72,16 +72,17 @@ function extractNamesFromText(s: string): { batter?: string; pitcher?: string } 
   const cueThenFullName = new RegExp(`(?:now batting|batting)[:]?-?\\s+${fullName}\\b`, "i");
   const t = s.replace(/\s+/g, " ").trim();
   let batter: string | undefined;
-  // Try full name first, normalize to initials
-  let m =
-    t.match(fullNameRe) ||
-    t.match(fullNameCue) ||
-    t.match(spacedNameRe) ||
-    t.match(compactNameRe) ||
-    t.match(spacedNameCue) ||
-    t.match(compactNameCue) ||
-    t.match(cueThenFullName) ||
-    t.match(cueThenSpaced);
+  let batterSource: "verb" | "cue" | undefined;
+  // Try to classify source of the batter match (verb-led vs cue-led)
+  let m: RegExpMatchArray | null = null;
+  if ((m = t.match(fullNameRe))) { batterSource = "verb"; }
+  else if ((m = t.match(fullNameCue))) { batterSource = "cue"; }
+  else if ((m = t.match(spacedNameRe))) { batterSource = "verb"; }
+  else if ((m = t.match(compactNameRe))) { batterSource = "verb"; }
+  else if ((m = t.match(spacedNameCue))) { batterSource = "cue"; }
+  else if ((m = t.match(compactNameCue))) { batterSource = "cue"; }
+  else if ((m = t.match(cueThenFullName))) { batterSource = "cue"; }
+  else if ((m = t.match(cueThenSpaced))) { batterSource = "cue"; }
   if (m) {
     const aRaw = (m[1] || "");
     const bRaw = (m[2] || "");
@@ -90,6 +91,7 @@ function extractNamesFromText(s: string): { batter?: string; pitcher?: string } 
     if (a && b) batter = `${a} ${b}`;
   }
   let pitcher: string | undefined;
+  let pitcherSource: "verb" | "cue" | undefined;
   let mp = t.match(pitcherFullName) || t.match(pitcherSpaced) || t.match(pitcherCompact);
   if (mp) {
     const aRaw = (mp[1] || "");
@@ -97,8 +99,9 @@ function extractNamesFromText(s: string): { batter?: string; pitcher?: string } 
     const a = aRaw.charAt(0).toUpperCase();
     const b = bRaw.charAt(0).toUpperCase();
     if (a && b) pitcher = `${a} ${b}`;
+    pitcherSource = "cue";
   }
-  return { batter, pitcher };
+  return { batter, pitcher, batterSource, pitcherSource };
 }
 
 function eventVerbFor(pa: PlateAppearanceCanonical | undefined): string | undefined {
@@ -479,6 +482,26 @@ export async function segmentGameText(
   return merged;
 }
 
+// Normalize various name styles to spaced initials (e.g., "John Miller" => "J M", "JM" => "J M")
+function normalizeShortName(name: string): string {
+  const t = String(name || "").replace(/\s+/g, " ").trim();
+  if (!t) return t;
+  // Already spaced initials
+  const mSpaced = t.match(/^([A-Za-z])\s+([A-Za-z])$/);
+  if (mSpaced) return `${mSpaced[1].toUpperCase()} ${mSpaced[2].toUpperCase()}`;
+  // Compact initials
+  const mCompact = t.match(/^([A-Za-z])([A-Za-z])$/);
+  if (mCompact) return `${mCompact[1].toUpperCase()} ${mCompact[2].toUpperCase()}`;
+  // Full name: use first and last tokens' initials
+  const toks = t.split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
+  if (toks.length >= 2) {
+    const first = toks[0].replace(/[^A-Za-z]/g, "");
+    const last = toks[toks.length - 1].replace(/[^A-Za-z]/g, "");
+    if (first && last) return `${first[0].toUpperCase()} ${last[0].toUpperCase()}`;
+  }
+  return t;
+}
+
 export async function canonicalizeGameText(
   rawGameText: string,
   ctx: GameContext,
@@ -573,9 +596,9 @@ export async function canonicalizeGameText(
     const pa = resultsArr[i];
     if (!pa) continue;
     const seg = segments[i] || "";
-    const { batter, pitcher } = extractNamesFromText(seg);
-    if (!pa.batter && batter) pa.batter = batter;
-    if (!pa.pitcher && pitcher) pa.pitcher = pitcher;
+    const info = extractNamesFromText(seg);
+    if (!pa.batter && info.batter) pa.batter = info.batter;
+    if (!pa.pitcher && info.pitcher) pa.pitcher = info.pitcher;
 
     if (!pa.batter) {
       const verb = eventVerbFor(pa);
@@ -592,6 +615,17 @@ export async function canonicalizeGameText(
         }
       }
     }
+    // Final cue-based backfill: allow previous segment "Now batting ..." to assign batter
+    if (!pa.batter) {
+      const prv = segments[i - 1] || "";
+      const prevInfo = extractNamesFromText(prv);
+      if (prevInfo.batter && prevInfo.batterSource === "cue") pa.batter = prevInfo.batter;
+    }
+
+    // Normalize names to spaced initials for consistent grouping downstream
+    if (pa.batter) pa.batter = normalizeShortName(pa.batter);
+    if (pa.pitcher) pa.pitcher = normalizeShortName(pa.pitcher);
+
     if (!pa.pitcher) {
       const nxt = segments[i + 1] || "";
       const prv = segments[i - 1] || "";

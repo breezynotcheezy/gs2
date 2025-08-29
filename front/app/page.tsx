@@ -1,61 +1,55 @@
  'use client'
 
- import React, { useCallback, useEffect, useMemo, useState } from 'react'
- import { useRouter } from 'next/navigation'
- import { Button } from '@/components/ui/button'
- import { Input } from '@/components/ui/input'
- import { Label } from '@/components/ui/label'
- import { Textarea } from '@/components/ui/textarea'
- import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
- import { Separator } from '@/components/ui/separator'
- import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
- import { Upload, Brain, BarChart3, Zap, Activity, Target, TrendingUp, Trash, AlertTriangle } from 'lucide-react'
- import type { PlateAppearanceCanonical } from '@gs-src/core/canon/types'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
+import { Upload, Trash, BarChart3, Activity, Brain, Zap, AlertTriangle, TrendingUp } from 'lucide-react'
+import type { PlateAppearanceCanonical } from '@gs-src/core/canon/types'
 
 // Persistent session store for aggregated plays within the tab session
 type StoredPA = { pa: PlateAppearanceCanonical; seg: string; segKey: string; canonKey: string }
 
-// Try to derive a batter key from the segment text if the PA is missing a batter.
-function deriveBatterFromSegment(seg?: string): string | undefined {
-  if (!seg) return undefined
-  const t = String(seg).replace(/\s+/g, " ").trim()
-  // Verb-led patterns (e.g., "J M singles", "John Miller strikes out")
-  const fullNameVerb = /\b([A-Za-z][A-Za-z'.-]{0,})\s+([A-Za-z][A-Za-z'.-]{0,})\b\s+(strikes out|walks|is hit by pitch|singles|doubles|triples|homers|reaches on error|grounds out|flies out|lines out)/i
-  const spacedInitsVerb = /\b([A-Z]{1,2})\s+([A-Z]{1,2})\b\s+(strikes out|walks|is hit by pitch|singles|doubles|triples|homers|reaches on error|grounds out|flies out|lines out)/i
-  const compactInitsVerb = /\b([A-Z])([A-Z])\b\s+(strikes out|walks|is hit by pitch|singles|doubles|triples|homers|reaches on error|grounds out|flies out|lines out)/i
-
-  // Batter cue patterns (e.g., "Now batting: J M", "John Miller at the plate")
-  const cue = /(batting|at bat|at the plate|to bat|steps in|leading off|leads off|now batting)/i
-  const fullNameCue = new RegExp(String.raw`\b([A-Za-z][A-Za-z'.-]{0,})\s+([A-Za-z][A-Za-z'.-]{0,})\b\s+` + cue.source, 'i')
-  const spacedInitsCue = new RegExp(String.raw`\b([A-Z]{1,2})\s+([A-Z]{1,2})\b\s+` + cue.source, 'i')
-  const cueThenFullName = /(?:now batting|batting)[:]?\s+([A-Za-z][A-Za-z'.-]{0,})\s+([A-Za-z][A-Za-z'.-]{0,})\b/i
-  const cueThenInits = /(?:now batting|batting)[:]?\s+([A-Z]{1,2})\s+([A-Z]{1,2})\b/i
-
-  const m =
-    t.match(fullNameVerb) ||
-    t.match(spacedInitsVerb) ||
-    t.match(compactInitsVerb) ||
-    t.match(fullNameCue) ||
-    t.match(spacedInitsCue) ||
-    t.match(cueThenFullName) ||
-    t.match(cueThenInits)
-  if (m) {
-    const a = String(m[1] || "").charAt(0).toUpperCase()
-    const b = String(m[2] || "").charAt(0).toUpperCase()
-    if (a && b) return `${a} ${b}`
+// Normalize various name styles to spaced initials (e.g., "John Miller" => "J M", "JM" => "J M")
+// and unify any Unknown variants into a single key "Unknown".
+function normalizeShortName(name?: string): string {
+  const t = String(name || "").replace(/\s+/g, " ").trim()
+  if (!t) return ""
+  if (/^unknown(?:\s+\d+)?$/i.test(t)) return "Unknown"
+  // Already spaced initials
+  let m = t.match(/^([A-Za-z])\s+([A-Za-z])$/)
+  if (m) return `${m[1].toUpperCase()} ${m[2].toUpperCase()}`
+  // Compact initials
+  m = t.match(/^([A-Za-z])([A-Za-z])$/)
+  if (m) return `${m[1].toUpperCase()} ${m[2].toUpperCase()}`
+  // Full name: use first and last tokens' initials
+  const toks = t.split(/\s+/).filter((w) => /[A-Za-z]/.test(w))
+  if (toks.length >= 2) {
+    const first = toks[0].replace(/[^A-Za-z]/g, "")
+    const last = toks[toks.length - 1].replace(/[^A-Za-z]/g, "")
+    if (first && last) return `${first[0].toUpperCase()} ${last[0].toUpperCase()}`
   }
-  return undefined
+  return t
 }
 
-function clipSeg(s?: string, max: number = 400): string {
-  const t = (s || "").trim()
-  return t.length > max ? `${t.slice(0, max)}…` : t
-}
 type StoredSession = { version: 1; plays: StoredPA[] }
 const SESSION_KEY = "gs:session:v1"
 
 function normSeg(s: string): string {
   return (s || "").replace(/\s+/g, " ").trim().toLowerCase()
+}
+
+// Strict identity key for grouping and lookups: trimmed lowercase full name; skip Unknown
+function nameKey(name?: string): string {
+  const t = String(name || "").replace(/\s+/g, " ").trim()
+  if (!t) return ""
+  if (/^unknown(?:\s+\d+)?$/i.test(t)) return ""
+  return t.toLowerCase()
 }
 
 function canonKeyFromPa(pa: PlateAppearanceCanonical): string {
@@ -286,10 +280,10 @@ export default function GreenSeamDashboard() {
 
   // Build batter summaries matching the previous card UI
   type BatterSummary = {
+    key: string
     name: string
     totals: { pas: number; pitchesSeen: number; contactRate: number; strikeoutRate: number; walkRate: number; hbpRate: number }
     breakdown: { results: Record<string, number>; battedBall: { gb: number; fb: number; ld: number }; power: { double: number; triple: number; hr: number }; pitchMix: Record<string, number> }
-    sampleNotes: string[]
     segments: string[]
     swing_mechanic?: string
     positional?: string
@@ -303,13 +297,13 @@ export default function GreenSeamDashboard() {
     const segs: string[] = Array.isArray(result?.segments) ? result.segments : []
     if (!Array.isArray(data) || data.length === 0) return []
 
-    // group by batter
-    const groups = new Map<string, { idxs: number[]; pas: PlateAppearanceCanonical[] }>()
+    // group by strict identity key; keep a human display name separately
+    const groups = new Map<string, { idxs: number[]; pas: PlateAppearanceCanonical[]; display: string }>()
     data.forEach((pa: any, i: number) => {
-      const seg = segs[i]
-      const fallback = deriveBatterFromSegment(seg)
-      const key = (typeof pa?.batter === "string" && pa.batter.trim()) ? pa.batter : (fallback || `Unknown ${i + 1}`)
-      if (!groups.has(key)) groups.set(key, { idxs: [], pas: [] })
+      const key = nameKey(typeof pa?.batter === "string" ? pa.batter : "")
+      if (!key) return
+      const display = normalizeShortName(String(pa?.batter || ""))
+      if (!groups.has(key)) groups.set(key, { idxs: [], pas: [], display })
       const g = groups.get(key)!
       g.idxs.push(i)
       g.pas.push(pa)
@@ -319,7 +313,7 @@ export default function GreenSeamDashboard() {
     const isContact = (r: string) => ["gb", "fb", "ld", "single", "double", "triple", "hr", "reached_on_error", "fielder_choice"].includes(r)
 
     const summaries: BatterSummary[] = []
-    for (const [name, g] of groups.entries()) {
+    for (const [key, g] of groups.entries()) {
       const pas = g.pas
       const n = pas.length
       const pitchesSeen = pas.reduce((s: number, p: any) => s + (Array.isArray(p.pitches) ? p.pitches.length : 0), 0)
@@ -337,18 +331,16 @@ export default function GreenSeamDashboard() {
       pas.forEach((p: any) => (Array.isArray(p.pitches) ? p.pitches : []).forEach((ev: string) => { pitchMix[ev] = (pitchMix[ev] || 0) + 1 }))
 
       const recentForm = g.idxs.slice(-7).map((i) => isHit((data[i] as any).pa_result) ? 1 : 0)
-      const latestSeg = g.idxs.length ? segs[g.idxs[g.idxs.length - 1]] : undefined
-      const sampleNotes = latestSeg ? [clipSeg(latestSeg)] : []
       const segTexts = g.idxs.map((i) => segs[i]).filter(Boolean)
 
       // Defer tips entirely to AI endpoint — two items only
       const avgConf = 0
 
         summaries.push({
-          name,
+          key,
+          name: g.display || key,
           totals: { pas: n, pitchesSeen, contactRate, strikeoutRate, walkRate, hbpRate },
           breakdown: { results, battedBall, power, pitchMix },
-          sampleNotes,
           segments: segTexts,
           swing_mechanic: "",
           positional: "",
@@ -374,8 +366,11 @@ export default function GreenSeamDashboard() {
 
         // Helper to fetch with timeout and simple retry
         const fetchOne = async (b: typeof batters[number]) => {
-          if (cancelled || aiByName[b.name]) return
-          const idxs = data.map((pa, i) => ({ pa, i })).filter(x => (x.pa as any)?.batter === b.name).map(x => x.i)
+          if (cancelled || aiByName[b.key]) return
+          const idxs = data
+            .map((pa, i) => ({ key: nameKey((pa as any)?.batter), i }))
+            .filter(x => x.key === b.key)
+            .map(x => x.i)
           const pas = idxs.map(i => data[i])
           const segments = idxs.map(i => segs[i]).filter(Boolean)
           const attempt = async () => {
@@ -390,7 +385,7 @@ export default function GreenSeamDashboard() {
               })
               const json = await resp.json().catch(() => ({}))
               if (json && json.ok) {
-                updates[b.name] = {
+                updates[b.key] = {
                   swing_mechanic: typeof json.swing_mechanic === "string" ? json.swing_mechanic : "",
                   positional: typeof json.positional === "string" ? json.positional : "",
                   opponent_pattern: typeof json.opponent_pattern === "string" ? json.opponent_pattern : "",
@@ -401,11 +396,11 @@ export default function GreenSeamDashboard() {
             } catch {}
             finally { clearTimeout(tid) }
             // Fallback: mark as completed with empty strings (no spinner)
-            updates[b.name] = { swing_mechanic: "", positional: "", opponent_pattern: "", confidence: 0 }
+            updates[b.key] = { swing_mechanic: "", positional: "", opponent_pattern: "", confidence: 0 }
           }
           // One try + one quick retry
           await attempt()
-          if (!updates[b.name]) await attempt()
+          if (!updates[b.key]) await attempt()
         }
 
         // Limit concurrency to reduce rate limits/timeouts
@@ -428,12 +423,12 @@ export default function GreenSeamDashboard() {
   const battersAI = useMemo(() => {
     if (!batters.length) return [] as typeof batters
     return batters.map((b) => {
-      const ai = aiByName[b.name]
+      const ai = aiByName[b.key]
       return {
         ...b,
-        swing_mechanic: ai?.swing_mechanic ?? b.swing_mechanic ?? "",
-        positional: ai?.positional ?? b.positional ?? "",
-        opponent_pattern: ai?.opponent_pattern ?? b.opponent_pattern ?? "",
+        swing_mechanic: ai?.swing_mechanic ?? "",
+        positional: ai?.positional ?? "",
+        opponent_pattern: ai?.opponent_pattern ?? "",
         recommendations_confidence: ai?.confidence ?? 0,
       }
     })
@@ -469,10 +464,8 @@ export default function GreenSeamDashboard() {
       const segs: string[] = []
       if (sess && Array.isArray(sess.plays)) {
         for (const p of sess.plays) {
-          if ((p.pa as any)?.batter === batter.name) {
-            pas.push(p.pa)
-            segs.push(p.seg)
-          }
+          const k = nameKey((p.pa as any)?.batter)
+          if (k && k === batter.key) { pas.push(p.pa); segs.push(p.seg) }
         }
       }
       const payload = { batter: batter.name, pas, segments: segs }
@@ -490,7 +483,10 @@ export default function GreenSeamDashboard() {
       const sess = loadSession()
       const prevPlays = Array.isArray(sess?.plays) ? sess!.plays : []
       const before = prevPlays.length
-      const remaining = prevPlays.filter((p) => (p.pa as any)?.batter !== name)
+      const remaining = prevPlays.filter((p) => {
+        const k = nameKey((p.pa as any)?.batter)
+        return k !== name
+      })
       const removed = before - remaining.length
       if (removed > 0) {
         const nextSess: StoredSession = { version: 1, plays: remaining }
@@ -747,7 +743,7 @@ export default function GreenSeamDashboard() {
                           title={`Delete ${batter.name}`}
                           onClick={() => {
                             if (window.confirm(`Remove all plays for ${batter.name}? This cannot be undone in this session.`)) {
-                              removeBatter(batter.name)
+                              removeBatter(batter.key)
                             }
                           }}
                         >
@@ -819,21 +815,6 @@ export default function GreenSeamDashboard() {
 
                   <Separator className="bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
 
-                  {/* Sample Notes */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Target className="w-4 h-4 text-amber-400" />
-                      <p className="text-xs font-mono text-gray-400">RECENT PERFORMANCE</p>
-                    </div>
-                    {batter.sampleNotes.length > 0 && (
-                      <div className="p-3 bg-gray-800/30 border border-gray-700/30 rounded text-xs font-mono text-gray-300">
-                        {batter.sampleNotes[0]}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Original Segments removed per request */}
-
                   {/* AI Recommendations: exactly two strings */}
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
@@ -844,7 +825,7 @@ export default function GreenSeamDashboard() {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {!aiByName[batter.name] ? (
+                      {!aiByName[batter.key] ? (
                         <div className="p-3 bg-gray-800/20 border border-gray-700/30 rounded text-xs font-mono text-gray-400 italic">
                           Generating insights...
                         </div>
@@ -885,7 +866,7 @@ export default function GreenSeamDashboard() {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {!aiByName[batter.name] ? (
+                      {!aiByName[batter.key] ? (
                         <div className="p-3 bg-red-900/10 border border-red-500/20 rounded text-xs font-mono text-red-200/70 italic">
                           Analyzing for opponent exploitable trends...
                         </div>
@@ -911,8 +892,35 @@ export default function GreenSeamDashboard() {
                       variant="outline"
                       size="lg"
                       aria-label={`View full analysis for ${batter.name}`}
-                      title="View Full Analysis"
-                      className="flex-1 w-full gap-3 bg-amber-500/20 border-amber-500/40 text-amber-100 hover:bg-amber-500/30 hover:border-amber-400/60 font-mono text-sm px-4 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/30 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg"
+                      title={
+                        aiByName[batter.key] && (
+                          (aiByName[batter.key]?.swing_mechanic || "").trim() ||
+                          (aiByName[batter.key]?.positional || "").trim() ||
+                          (aiByName[batter.key]?.opponent_pattern || "").trim()
+                        )
+                          ? "View Full Analysis"
+                          : "Full Analysis enabled when AI insights exist"
+                      }
+                      disabled={
+                        !(
+                          aiByName[batter.key] && (
+                            (aiByName[batter.key]?.swing_mechanic || "").trim() ||
+                            (aiByName[batter.key]?.positional || "").trim() ||
+                            (aiByName[batter.key]?.opponent_pattern || "").trim()
+                          )
+                        )
+                      }
+                      className={`flex-1 w-full gap-3 bg-amber-500/20 border-amber-500/40 text-amber-100 hover:bg-amber-500/30 hover:border-amber-400/60 font-mono text-sm px-4 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/30 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg ${
+                        !(
+                          aiByName[batter.key] && (
+                            (aiByName[batter.key]?.swing_mechanic || "").trim() ||
+                            (aiByName[batter.key]?.positional || "").trim() ||
+                            (aiByName[batter.key]?.opponent_pattern || "").trim()
+                          )
+                        )
+                          ? "opacity-50 cursor-not-allowed"
+                          : ""
+                      }`}
                       onClick={() => goFullAnalysis(batter)}
                     >
                       <TrendingUp className="w-5 h-5" />
