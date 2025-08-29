@@ -1,19 +1,34 @@
 const { execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
-console.log('Starting custom build script...');
+console.log('Starting Vercel build script...');
 
-// Change to frontend directory
-process.chdir(path.join(__dirname, 'front'));
+// Ensure we're in the correct directory
+const frontendDir = path.join(__dirname, 'front');
+if (!fs.existsSync(frontendDir)) {
+  console.error('Error: front directory not found');
+  process.exit(1);
+}
 
+process.chdir(frontendDir);
+console.log('Changed to directory:', process.cwd());
+
+// Install dependencies
 console.log('Installing dependencies...');
 try {
-  // Install dependencies with --no-frozen-lockfile
   execSync('pnpm install --no-frozen-lockfile', { stdio: 'inherit' });
+  console.log('Dependencies installed successfully');
   
-  console.log('Running build...');
-  // Run the build
+  // Run Next.js build
+  console.log('Running Next.js build...');
   execSync('pnpm run build', { stdio: 'inherit' });
+  
+  // Verify build output
+  const nextDir = path.join(frontendDir, '.next');
+  if (!fs.existsSync(nextDir)) {
+    throw new Error('Next.js build did not create .next directory');
+  }
   
   console.log('Build completed successfully!');
   process.exit(0);
