@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "cd front && pnpm install --no-frozen-lockfile && pnpm run build",
-  "outputDirectory": "front/.next",
+  "buildCommand": "pnpm install --no-frozen-lockfile && pnpm run build",
+  "outputDirectory": ".next",
   "framework": "nextjs"
 }
