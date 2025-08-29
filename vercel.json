@@ -3,13 +3,7 @@
   "builds": [
     {
       "src": "front/package.json",
-      "use": "@vercel/next",
-      "config": {
-        "includeFiles": [
-          "front/.next/**",
-          "front/public/**"
-        ]
-      }
+      "use": "@vercel/next"
     }
   ],
   "routes": [

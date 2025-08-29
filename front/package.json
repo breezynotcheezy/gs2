@@ -13,6 +13,8 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "ajv": "^8.17.1",
+    "openai": "^4.55.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
