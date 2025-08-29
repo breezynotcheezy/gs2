@@ -17,7 +17,6 @@ const nextConfig = {
     unoptimized: true,
   },
   outputFileTracingRoot: path.join(__dirname, '..'),
-  serverComponentsExternalPackages: ['@prisma/client', 'bcryptjs'],
   experimental: {},
   distDir: '.next',
   trailingSlash: true,
@@ -43,7 +42,7 @@ const nextConfig = {
 
     return config;
   },
-  pageExtensions: ['page.tsx', 'page.ts', 'page.jsx', 'page.js'],
+  pageExtensions: ['tsx', 'ts', 'jsx', 'js', 'mdx'],
 };
 
 export default nextConfig;
