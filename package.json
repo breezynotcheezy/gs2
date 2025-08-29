@@ -4,14 +4,11 @@
   "private": true,
   "type": "module",
   "description": "Green Seam: deterministic baseball engine with LLM-assisted canonicalization and EV decisioning.",
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "tsx src/cli.ts --demo",
-    "cli": "tsx src/cli.ts",
-    "ui": "tsx src/server.ts",
-    "build": "tsc -p tsconfig.json",
-    "postbuild": "node scripts/copy-assets.mjs",
-    "pretest": "npm run build",
-    "start": "node dist/cli.js",
+    "dev": "pnpm --filter front dev",
+    "build": "pnpm --filter front build",
+    "start": "pnpm --filter front start",
     "lint": "eslint .",
     "format": "prettier -w .",
     "test": "node --test"
