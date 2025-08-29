@@ -19,7 +19,8 @@ const nextConfig = {
   outputFileTracingRoot: path.join(__dirname, '..'),
   experimental: {},
   distDir: '.next',
-  trailingSlash: true,
+  // Avoid unexpected 404s due to slash mismatches in hosting environments
+  trailingSlash: false,
   webpack: (config, { isServer }) => {
     // Aliases for import resolution
     // '@/*' -> front/* (components, app, lib, etc.)
