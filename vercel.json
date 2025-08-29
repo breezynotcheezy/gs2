@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd front && pnpm install && pnpm build",
+  "outputDirectory": "front/.next",
+  "framework": "nextjs",
+  "installCommand": "cd front && pnpm install",
+  "rootDirectory": "front",
+  "regions": ["iad1"],
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/front/$1" }
+  ]
+}
