@@ -1,9 +1,9 @@
-import { completeJSON } from "../llm.js";
+import { completeJSON } from "../llm";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { GameContext, PlateAppearanceCanonical } from "./types.js";
-import { validatePlateAppearanceCanonical } from "./validator.js";
+import type { GameContext, PlateAppearanceCanonical } from "./types";
+import { validatePlateAppearanceCanonical } from "./validator";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

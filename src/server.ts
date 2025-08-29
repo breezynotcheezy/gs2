@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import dotenv from "dotenv";
-import { canonicalizeGameText } from "./core/canon/game_canonicalizer.js";
-import type { GameContext } from "./core/canon/types.js";
+import { canonicalizeGameText } from "./core/canon/game_canonicalizer";
+import type { GameContext } from "./core/canon/types";
 
 // Load env (.env.local preferred)
 const envLocal = path.resolve(process.cwd(), ".env.local");

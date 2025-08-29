@@ -1,5 +1,5 @@
-import { completeJSON } from "../llm.js";
-import type { PlateAppearanceCanonical } from "./types.js";
+import { completeJSON } from "../llm";
+import type { PlateAppearanceCanonical } from "./types";
 
 export interface HitterCardTotals {
   pas: number;

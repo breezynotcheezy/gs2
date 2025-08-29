@@ -4,12 +4,12 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { Command } from "commander";
 import dotenv from "dotenv";
-import { validatePlateAppearanceCanonical } from "./core/canon/validator.js";
-import type { PlateAppearanceCanonical } from "./core/canon/types.js";
-import { canonicalizePlateAppearance } from "./core/canon/canonicalizer.js";
-import type { GameContext } from "./core/canon/types.js";
-import { canonicalizeGameText, deterministicSegment } from "./core/canon/game_canonicalizer.js";
-import { buildHitterCards } from "./core/canon/cards.js";
+import { validatePlateAppearanceCanonical } from "./core/canon/validator";
+import type { PlateAppearanceCanonical } from "./core/canon/types";
+import { canonicalizePlateAppearance } from "./core/canon/canonicalizer";
+import type { GameContext } from "./core/canon/types";
+import { canonicalizeGameText, deterministicSegment } from "./core/canon/game_canonicalizer";
+import { buildHitterCards } from "./core/canon/cards";
 
 // Load env: prefer .env.local, fallback to .env
 const envPathLocal = path.resolve(process.cwd(), ".env.local");

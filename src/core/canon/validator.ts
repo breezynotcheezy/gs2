@@ -2,7 +2,7 @@ import Ajv from "ajv";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { PlateAppearanceCanonical } from "./types.js";
+import type { PlateAppearanceCanonical } from "./types";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

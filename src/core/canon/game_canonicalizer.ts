@@ -1,7 +1,7 @@
-import { completeJSON } from "../llm.js";
-import type { GameContext, PlateAppearanceCanonical } from "./types.js";
-import { canonicalizePlateAppearance } from "./canonicalizer.js";
-import { toMinimalCanonicalFromText } from "./cards.js";
+import { completeJSON } from "../llm";
+import type { GameContext, PlateAppearanceCanonical } from "./types";
+import { canonicalizePlateAppearance } from "./canonicalizer";
+import { toMinimalCanonicalFromText } from "./cards";
 import { createHash } from "node:crypto";
 
 function extractJSON(text: string): any {
