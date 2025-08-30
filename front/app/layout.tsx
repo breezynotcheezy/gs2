@@ -4,6 +4,7 @@ import "./globals.css"
 import { getServerSession } from "next-auth"
 import { authOptions } from "../auth"
 import { ClientProviders } from "./ClientProviders"
+import ProtectedLayout from "./ProtectedLayout"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -35,9 +36,11 @@ export default async function RootLayout({
   const session = await getServerSession(authOptions)
   return (
     <html lang="en" className={`${inter.variable} ${orbitron.variable} antialiased`} suppressHydrationWarning>
-      <body className="font-sans">
+      <body className={`${inter.variable} ${orbitron.variable} font-sans`}>
         <ClientProviders session={session}>
-          {children}
+          <ProtectedLayout>
+            {children}
+          </ProtectedLayout>
         </ClientProviders>
       </body>
     </html>

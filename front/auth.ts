@@ -1,12 +1,20 @@
-import type { NextAuthOptions } from "next-auth"
+import type { NextAuthOptions, DefaultSession } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import prisma from "@/lib/prisma"
 
+declare module "next-auth" {
+  interface Session extends DefaultSession {
+    user: {
+      id: string;
+    } & DefaultSession["user"];
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
-  session: { strategy: "database" },
-  secret: process.env.NEXTAUTH_SECRET,
+  session: { strategy: "jwt" },
+  secret: process.env.NEXTAUTH_SECRET || 'your-secret-key',
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -39,11 +47,17 @@ export const authOptions: NextAuthOptions = {
   ],
   pages: { signIn: "/login" },
   callbacks: {
-    async session({ session, user, token }) {
+    async session({ session, token }) {
       if (session.user) {
-        ;(session.user as any).id = (user as any)?.id || (token as any)?.sub || null
+        session.user.id = token.sub as string;
       }
-      return session
+      return session;
+    },
+    async jwt({ token, user }) {
+      if (user) {
+        token.sub = user.id;
+      }
+      return token;
     },
   },
 }
