@@ -3,15 +3,12 @@ import { CapacitorConfig } from '@capacitor/cli'
 const config: CapacitorConfig = {
   appId: 'com.greenseam.app',
   appName: 'GreenSeam',
-  webDir: 'dist', // not used when server.url is set
+  webDir: 'dist', // used if you bundle web assets instead of pointing to server.url
   server: {
-    // Replace with your LAN IP so emulator/device can reach your dev server
-    url: 'http://192.168.1.100:3000',
-    cleartext: true
+    // Production domain for release builds
+    url: 'https://gs2-theta.vercel.app',
+    cleartext: false,
   },
-  android: {
-    allowMixedContent: true
-  }
 }
 
 export default config
