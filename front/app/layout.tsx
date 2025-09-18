@@ -23,7 +23,14 @@ export const metadata: Metadata = {
   description: "AI-powered baseball analytics dashboard",
   generator: 'v0.app',
   icons: {
-    icon: '/icon.svg',
+    icon: '/placeholder-logo.svg',
+  },
+  manifest: '/manifest.json',
+  themeColor: '#111827',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'GreenSeam'
   },
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
 }

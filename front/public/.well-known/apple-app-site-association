@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAMID.com.greenseam.app",
+        "paths": ["/plan/*"]
+      }
+    ]
+  }
+}

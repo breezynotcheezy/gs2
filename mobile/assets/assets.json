@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ionic-team/capacitor-assets/main/schema/manifest.schema.json",
+  "resources": {
+    "icon": {
+      "src": "../front/public/placeholder-logo.png",
+      "foreground": "../front/public/placeholder-logo.png",
+      "background": "#000000"
+    },
+    "splash": {
+      "src": "../front/public/placeholder.jpg",
+      "background": "#000000"
+    }
+  },
+  "platforms": ["android", "ios"]
+}

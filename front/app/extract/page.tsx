@@ -93,6 +93,8 @@ export default function ExtractPage() {
       const errCount = Array.isArray(data?.errors) ? data.errors.length : 0
       if (data && data.ok === false) {
         if (segCount || paCount) {
+          // On partial success, clear pasted text so user can move on to the next set
+          setText("")
           setStatus(`Partial success: ${paCount} plays from ${segCount} segments. ${errCount} errors.`)
         } else {
           setStatus(`Error${errCount ? `: ${errCount} errors` : ""}`)
@@ -100,6 +102,8 @@ export default function ExtractPage() {
         return
       }
 
+      // On full success, clear pasted text so user can move on to the next set
+      setText("")
       setStatus(errCount ? `Done with ${errCount} warnings` : "Done")
     } catch (e: any) {
       setStatus("Error")

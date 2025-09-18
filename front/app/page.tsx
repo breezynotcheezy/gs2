@@ -1,6 +1,7 @@
  'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,7 +10,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
-import { Upload, Trash, BarChart3, Activity, Brain, Zap, AlertTriangle, TrendingUp } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Upload, Trash, BarChart3, Activity, Brain, Zap, AlertTriangle, TrendingUp, Share2 } from 'lucide-react'
 import type { PlateAppearanceCanonical } from '@gs-src/core/canon/types'
 
 // Persistent session store for aggregated plays within the tab session
@@ -138,6 +149,32 @@ export default function GreenSeamDashboard() {
   const [minPA, setMinPA] = useState<number>(0)
   const [pasteText, setPasteText] = useState<string>("")
   const router = useRouter()
+  // Confirm dialog state for deletions
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmTarget, setConfirmTarget] = useState<null | { type: 'all' } | { type: 'batter'; key: string; name: string }>(null)
+
+  // Share helper: prefers Capacitor Share, then Web Share API, then clipboard fallback
+  const shareLink = useCallback(async (title: string, text: string, url: string) => {
+    try {
+      const cap = typeof window !== 'undefined' ? (window as any).Capacitor : null
+      if (cap?.Plugins?.Share?.share) {
+        await cap.Plugins.Share.share({ title, text, url, dialogTitle: 'Share' })
+        return
+      }
+    } catch {}
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text, url })
+        return
+      }
+    } catch {}
+    try {
+      await navigator.clipboard.writeText(url)
+      setStatus('Link copied to clipboard')
+    } catch {
+      setStatus('Share unavailable')
+    }
+  }, [])
 
   // On mount, load any existing session so the dashboard reflects all accumulated plays
   useEffect(() => {
@@ -478,6 +515,12 @@ export default function GreenSeamDashboard() {
     }
   }, [router])
 
+  const shareBatter = useCallback(async (batter: { name: string }) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL || '')
+    const url = `${origin}/plan?b=${encodeURIComponent(batter.name)}`
+    await shareLink(`GreenSeam: ${batter.name}`, `Open analysis for ${batter.name}.`, url)
+  }, [shareLink])
+
   const removeBatter = useCallback((name: string) => {
     try {
       const sess = loadSession()
@@ -519,6 +562,41 @@ export default function GreenSeamDashboard() {
   return (
   <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black">
     <main className="container mx-auto px-4 py-6">
+      {/* Delete Confirmation Dialog (glassomorphic) */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent className="backdrop-blur-xl bg-gradient-to-br from-black/70 via-gray-900/70 to-black/70 border border-amber-500/20 text-amber-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono text-amber-200">
+              {confirmTarget?.type === 'all' ? 'Delete All Player Cards?' : `Delete ${confirmTarget?.name}?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-gray-400 font-mono">
+              {confirmTarget?.type === 'all'
+                ? 'This will remove all player cards and clear the current session.'
+                : 'This will remove all plays for this hitter from the current session.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-black/40 border border-amber-500/20 text-amber-200 hover:bg-amber-500/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600/80 hover:bg-red-600 text-white border border-red-400/40"
+              onClick={() => {
+                try {
+                  if (confirmTarget?.type === 'all') {
+                    clearAll()
+                  } else if (confirmTarget?.type === 'batter' && confirmTarget.key) {
+                    removeBatter(confirmTarget.key)
+                  }
+                } finally {
+                  setConfirmOpen(false)
+                  setConfirmTarget(null)
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex flex-col items-center justify-center mb-8">
         <div className="text-center mb-4">
           <h1 className="text-6xl font-mono font-bold bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent mb-2 drop-shadow-2xl">
@@ -570,7 +648,6 @@ export default function GreenSeamDashboard() {
           >
             Clear
           </Button>
-          <span className="text-[11px] font-mono text-gray-500">Duplicates are auto-skipped; new plays merge into the current session.</span>
         </div>
       </div>
 
@@ -622,14 +699,10 @@ export default function GreenSeamDashboard() {
               </div>
             </div>
             
-            {/* Delete Button */}
+            {/* Links and Actions */}
             <div className="w-full sm:w-auto">
               <Button
-                onClick={() => {
-                  if (window.confirm('Delete all player cards and clear this session?')) {
-                    clearAll()
-                  }
-                }}
+                onClick={() => { setConfirmTarget({ type: 'all' }); setConfirmOpen(true) }}
                 disabled={running || (batters.length === 0)}
                 variant="destructive"
                 className="gap-2 w-full sm:w-auto h-9"
@@ -638,6 +711,11 @@ export default function GreenSeamDashboard() {
               >
                 <Trash className="w-4 h-4" />
                 Delete All
+              </Button>
+            </div>
+            <div className="w-full sm:w-auto">
+              <Button asChild variant="outline" className="h-9">
+                <Link href="/privacy">Privacy Policy</Link>
               </Button>
             </div>
           </div>
@@ -741,13 +819,19 @@ export default function GreenSeamDashboard() {
                           className="h-8 w-8"
                           aria-label={`Delete ${batter.name}`}
                           title={`Delete ${batter.name}`}
-                          onClick={() => {
-                            if (window.confirm(`Remove all plays for ${batter.name}? This cannot be undone in this session.`)) {
-                              removeBatter(batter.key)
-                            }
-                          }}
+                          onClick={() => { setConfirmTarget({ type: 'batter', key: batter.key, name: batter.name }); setConfirmOpen(true) }}
                         >
                           <Trash className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-8 w-8"
+                          aria-label={`Share ${batter.name}`}
+                          title={`Share ${batter.name}`}
+                          onClick={() => { void shareBatter({ name: batter.name }) }}
+                        >
+                          <Share2 className="w-4 h-4" />
                         </Button>
                       </div>
                       <div className="text-xs text-gray-400 font-mono">CONTACT RATE</div>

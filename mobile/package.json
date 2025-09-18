@@ -1,0 +1,26 @@
+{
+  "name": "greenseam-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "cap:sync": "npx cap sync",
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios",
+    "cap:run:android:dev": "npx cap run android -l --external",
+    "cap:run:ios:dev": "npx cap run ios -l --external",
+    "cap:assets": "npx @capacitor/assets generate --platform android,ios --assetPath ./assets/assets.json"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/share": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0",
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/ios": "^6.1.0",
+    "@capacitor/assets": "^3.0.5",
+    "typescript": "^5.6.0"
+  }
+}
