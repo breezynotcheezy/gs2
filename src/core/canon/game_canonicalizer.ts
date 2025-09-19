@@ -341,7 +341,7 @@ export async function segmentGameText(
           if (verbose) console.error(`[segmentGameText] LLM segmentation attempt ${attempt + 1}/${Math.max(1, maxRetries)} using ${model} (chunk)`);
           const raw = await completeJSON({
             model,
-            system: "You are a strict JSON array emitter. Output only valid JSON.",
+            system: "You are a 100% strict JSON array emitter. Output only valid JSON.",
             user: userPrompt,
             temperature: 0,
             timeoutMs: timeout,
