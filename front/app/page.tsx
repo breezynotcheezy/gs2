@@ -494,6 +494,20 @@ export default function GreenSeamDashboard() {
     return arr
   }, [battersAI, minPA, resultFilter])
 
+  // Expose current filter context for the chatbot via sessionStorage
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      const payload = {
+        minPA,
+        resultFilter,
+        keys: filteredBatters.map((b) => b.key),
+        names: filteredBatters.map((b) => b.name),
+      }
+      sessionStorage.setItem('gs:ui:filter', JSON.stringify(payload))
+    } catch {}
+  }, [filteredBatters, minPA, resultFilter])
+
   const goFullAnalysis = useCallback((batter: any) => {
     try {
       const sess = loadSession()
@@ -599,7 +613,7 @@ export default function GreenSeamDashboard() {
       </AlertDialog>
       <div className="flex flex-col items-center justify-center mb-8">
         <div className="text-center mb-4">
-          <h1 className="text-6xl font-mono font-bold bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent mb-2 drop-shadow-2xl">
+          <h1 className="text-4xl sm:text-6xl font-mono font-bold bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent mb-2 drop-shadow-2xl">
             GREENSEAM AI
           </h1>
         </div>
@@ -611,7 +625,7 @@ export default function GreenSeamDashboard() {
           variant="outline"
           size="lg"
           disabled={running}
-          className="gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-6 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
+          className="w-full sm:w-auto gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-6 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
         >
           <Label htmlFor="file" className="flex items-center gap-3 cursor-pointer">
             <Upload className="w-4 h-4" />
@@ -631,19 +645,19 @@ export default function GreenSeamDashboard() {
           value={pasteText}
           onChange={(e) => setPasteText((e.target as HTMLTextAreaElement).value)}
         />
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <Button
             onClick={ingestPaste}
             disabled={running}
             variant="outline"
-            className="gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-4 py-2 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
+            className="w-full sm:w-auto gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-4 py-2 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
           >
             {running ? "Processing..." : "INGEST TEXT"}
           </Button>
           <Button
             type="button"
             variant="ghost"
-            className="text-xs font-mono text-gray-400"
+            className="text-xs font-mono text-gray-400 w-full sm:w-auto"
             onClick={() => setPasteText("")}
           >
             Clear
@@ -724,7 +738,7 @@ export default function GreenSeamDashboard() {
 
       {/* Previous dashboard stat cards */}
       {result?.ok && batters.length > 0 && (
-        <div className="grid grid-cols-4 gap-4 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
           <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
             <CardContent className="p-5">
               <div className="flex items-center gap-3">
@@ -800,7 +814,7 @@ export default function GreenSeamDashboard() {
                 className="relative overflow-hidden bg-gradient-to-br from-gray-900/95 via-black/90 to-gray-900/95 backdrop-blur-xl border border-amber-500/20 hover:border-amber-400/40 transition-all duration-500 shadow-2xl hover:shadow-amber-500/25 hover:scale-[1.02] transform"
               >
                 <CardHeader className="pb-4 relative">
-                  <div className="relative flex items-start justify-between">
+                  <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div>
                       <CardTitle className="text-xl text-amber-100 font-mono font-bold mb-1 drop-shadow-lg">
                         {batter.name}
@@ -816,7 +830,7 @@ export default function GreenSeamDashboard() {
                         <Button
                           size="icon"
                           variant="destructive"
-                          className="h-8 w-8"
+                          className="h-10 w-10 sm:h-8 sm:w-8"
                           aria-label={`Delete ${batter.name}`}
                           title={`Delete ${batter.name}`}
                           onClick={() => { setConfirmTarget({ type: 'batter', key: batter.key, name: batter.name }); setConfirmOpen(true) }}
@@ -826,7 +840,7 @@ export default function GreenSeamDashboard() {
                         <Button
                           size="icon"
                           variant="outline"
-                          className="h-8 w-8"
+                          className="h-10 w-10 sm:h-8 sm:w-8"
                           aria-label={`Share ${batter.name}`}
                           title={`Share ${batter.name}`}
                           onClick={() => { void shareBatter({ name: batter.name }) }}

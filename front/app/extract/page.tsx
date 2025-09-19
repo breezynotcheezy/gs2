@@ -130,10 +130,10 @@ export default function ExtractPage() {
               </div>
 
               <div className="flex flex-wrap gap-4 items-end">
-                <div className="space-y-1">
+                <div className="space-y-1 w-full sm:w-auto">
                   <Label htmlFor="segMode">Segmentation</Label>
                   <Select value={segMode} onValueChange={(v: "hybrid" | "llm" | "det") => setSegMode(v)}>
-                    <SelectTrigger id="segMode" className="w-[220px]">
+                    <SelectTrigger id="segMode" className="w-full sm:w-[220px]">
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
                     <SelectContent>
@@ -144,29 +144,29 @@ export default function ExtractPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 w-full sm:w-auto">
                   <Label htmlFor="model">Model</Label>
-                  <Input id="model" type="text" value={model} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModel(e.target.value)} className="w-[220px]" />
+                  <Input id="model" type="text" value={model} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModel(e.target.value)} className="w-full sm:w-[220px]" />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 w-full sm:w-auto">
                   <Label htmlFor="timeout">Timeout (ms)</Label>
-                  <Input id="timeout" type="number" min={5000} step={1000} value={timeoutMs} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTimeoutMs(Number(e.target.value))} className="w-[180px]" />
+                  <Input id="timeout" type="number" min={5000} step={1000} value={timeoutMs} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTimeoutMs(Number(e.target.value))} className="w-full sm:w-[180px]" />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 w-full sm:w-auto">
                   <Label htmlFor="segConc">Seg workers</Label>
-                  <Input id="segConc" type="number" min={1} step={1} value={segConc} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSegConc(Number(e.target.value))} className="w-[140px]" />
+                  <Input id="segConc" type="number" min={1} step={1} value={segConc} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSegConc(Number(e.target.value))} className="w-full sm:w-[140px]" />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 w-full sm:w-auto">
                   <Label htmlFor="canonConc">Canon workers</Label>
-                  <Input id="canonConc" type="number" min={1} step={1} value={canonConc} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCanonConc(Number(e.target.value))} className="w-[140px]" />
+                  <Input id="canonConc" type="number" min={1} step={1} value={canonConc} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCanonConc(Number(e.target.value))} className="w-full sm:w-[140px]" />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 w-full sm:w-auto">
                   <Label htmlFor="segRetries">Seg retries</Label>
-                  <Input id="segRetries" type="number" min={1} step={1} value={segRetries} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSegRetries(Number(e.target.value))} className="w-[140px]" />
+                  <Input id="segRetries" type="number" min={1} step={1} value={segRetries} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSegRetries(Number(e.target.value))} className="w-full sm:w-[140px]" />
                 </div>
 
                 <div className="flex items-center gap-2 pt-6">
@@ -174,8 +174,8 @@ export default function ExtractPage() {
                   <Label htmlFor="verbose">verbose</Label>
                 </div>
 
-                <div className="pt-5">
-                  <Button onClick={handleRun} disabled={!canRun} className="min-w-28">
+                <div className="pt-5 w-full sm:w-auto">
+                  <Button onClick={handleRun} disabled={!canRun} className="w-full sm:min-w-28">
                     {running ? "Running..." : "Extract"}
                   </Button>
                 </div>

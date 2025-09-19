@@ -8,6 +8,11 @@ const PasswordProtect = dynamic(
   { ssr: false }
 );
 
+const Chatbot = dynamic(
+  () => import('@/components/Chatbot'),
+  { ssr: false }
+);
+
 export default function ProtectedLayout({
   children,
 }: {
@@ -16,6 +21,7 @@ export default function ProtectedLayout({
   return (
     <PasswordProtect>
       {children}
+      <Chatbot />
     </PasswordProtect>
   );
 }
