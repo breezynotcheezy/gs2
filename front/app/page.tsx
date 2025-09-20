@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Upload, Trash, BarChart3, Activity, Brain, Zap, AlertTriangle, TrendingUp, Share2 } from 'lucide-react'
+import { Upload, Trash, BarChart3, Activity, Brain, Zap, AlertTriangle, TrendingUp, Share2, Paperclip, X } from 'lucide-react'
 import type { PlateAppearanceCanonical } from '@gs-src/core/canon/types'
 
 // Persistent session store for aggregated plays within the tab session
@@ -147,7 +147,20 @@ export default function GreenSeamDashboard() {
   const [result, setResult] = useState<any>(null)
   const [resultFilter, setResultFilter] = useState<"all" | "so" | "bb" | "hr">("all")
   const [minPA, setMinPA] = useState<number>(0)
-  const [pasteText, setPasteText] = useState<string>("")
+  type PasteChunk = { id: string; text: string; words: number; chars: number }
+  const [pasteChunks, setPasteChunks] = useState<PasteChunk[]>([])
+  const [pasteDraft, setPasteDraft] = useState<string>("")
+  const addChunk = useCallback((txt: string) => {
+    const t = (txt || "").trim()
+    if (!t) return
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2,7)}`
+    const words = t.split(/\s+/).filter(Boolean).length
+    const chars = t.length
+    setPasteChunks((arr) => [...arr, { id, text: t, words, chars }])
+  }, [])
+  const removeChunk = useCallback((id: string) => {
+    setPasteChunks((arr) => arr.filter((c) => c.id !== id))
+  }, [])
   const router = useRouter()
   // Confirm dialog state for deletions
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -282,13 +295,20 @@ export default function GreenSeamDashboard() {
   }, [readTextFromFile, runWithText])
 
   const ingestPaste = useCallback(async () => {
-    const trimmed = (pasteText || "").trim()
+    const pieces = [
+      ...pasteChunks.map((c) => c.text),
+      pasteDraft,
+    ].map((s) => (s || "").trim()).filter(Boolean)
+    const trimmed = pieces.join("\n\n").trim()
     if (!trimmed) {
       setStatus("Paste is empty. Please paste play-by-play text.")
       return
     }
     await runWithText(trimmed)
-  }, [pasteText, runWithText])
+    // Auto-clear after successful submit
+    setPasteChunks([])
+    setPasteDraft("")
+  }, [pasteChunks, pasteDraft, runWithText])
 
   // Helpers for display
   const prettyResult = (r?: string) => {
@@ -350,7 +370,7 @@ export default function GreenSeamDashboard() {
     const isContact = (r: string) => ["gb", "fb", "ld", "single", "double", "triple", "hr", "reached_on_error", "fielder_choice"].includes(r)
 
     const summaries: BatterSummary[] = []
-    for (const [key, g] of groups.entries()) {
+    groups.forEach((g, key) => {
       const pas = g.pas
       const n = pas.length
       const pitchesSeen = pas.reduce((s: number, p: any) => s + (Array.isArray(p.pitches) ? p.pitches.length : 0), 0)
@@ -367,25 +387,25 @@ export default function GreenSeamDashboard() {
       const pitchMix: Record<string, number> = { ball: 0, called_strike: 0, swinging_strike: 0, foul: 0, in_play: 0 }
       pas.forEach((p: any) => (Array.isArray(p.pitches) ? p.pitches : []).forEach((ev: string) => { pitchMix[ev] = (pitchMix[ev] || 0) + 1 }))
 
-      const recentForm = g.idxs.slice(-7).map((i) => isHit((data[i] as any).pa_result) ? 1 : 0)
-      const segTexts = g.idxs.map((i) => segs[i]).filter(Boolean)
+      const recentForm = g.idxs.slice(-7).map((i: number) => isHit((data[i] as any).pa_result) ? 1 : 0)
+      const segTexts = g.idxs.map((i: number) => segs[i]).filter(Boolean)
 
       // Defer tips entirely to AI endpoint — two items only
       const avgConf = 0
 
-        summaries.push({
-          key,
-          name: g.display || key,
-          totals: { pas: n, pitchesSeen, contactRate, strikeoutRate, walkRate, hbpRate },
-          breakdown: { results, battedBall, power, pitchMix },
-          segments: segTexts,
-          swing_mechanic: "",
-          positional: "",
-          opponent_pattern: "",
-          recommendations_confidence: avgConf,
-          recentForm,
-        })
-    }
+      summaries.push({
+        key,
+        name: g.display || String(key),
+        totals: { pas: n, pitchesSeen, contactRate, strikeoutRate, walkRate, hbpRate },
+        breakdown: { results, battedBall, power, pitchMix },
+        segments: segTexts,
+        swing_mechanic: "",
+        positional: "",
+        opponent_pattern: "",
+        recommendations_confidence: avgConf,
+        recentForm,
+      })
+    })
     return summaries
   }, [result])
 
@@ -567,7 +587,8 @@ export default function GreenSeamDashboard() {
     setResult(null)
     setStatus("Session cleared.")
     setOutput("(no output yet)")
-    setPasteText("")
+    setPasteDraft("")
+    setPasteChunks([])
     setFile(null)
     setMinPA(0)
     setResultFilter("all")
@@ -612,53 +633,121 @@ export default function GreenSeamDashboard() {
         </AlertDialogContent>
       </AlertDialog>
       <div className="flex flex-col items-center justify-center mb-8">
-        <div className="text-center mb-4">
-          <h1 className="text-4xl sm:text-6xl font-mono font-bold bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent mb-2 drop-shadow-2xl">
+        <div className="text-center mb-3 sm:mb-4">
+          <h1 className="text-3xl sm:text-6xl font-mono font-bold bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent mb-2 drop-shadow-2xl">
             GREENSEAM AI
           </h1>
         </div>
 
-        {/* Hidden file input bound to the styled Upload button */}
-        <Input id="file" type="file" accept=".txt,text/plain" className="hidden" onChange={onFileChange} />
-        <Button
-          asChild
-          variant="outline"
-          size="lg"
-          disabled={running}
-          className="w-full sm:w-auto gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-6 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
-        >
-          <Label htmlFor="file" className="flex items-center gap-3 cursor-pointer">
-            <Upload className="w-4 h-4" />
-            {running ? "Processing..." : "UPLOAD DATA"}
-          </Label>
-        </Button>
+        {/* Upload moved below into action row under Paste Data */}
       </div>
 
       {/* Paste Text Ingest (same pipeline as file upload) */}
       <div className="mx-auto w-full max-w-3xl -mt-4 mb-6">
         <Label htmlFor="paste" className="text-xs font-mono text-gray-400 mb-1 inline-block">Paste Data</Label>
-        <Textarea
-          id="paste"
-          placeholder="Paste play-by-play text here..."
-          className="bg-black/50 border-amber-500/20 text-amber-100 placeholder:text-gray-500"
-          rows={6}
-          value={pasteText}
-          onChange={(e) => setPasteText((e.target as HTMLTextAreaElement).value)}
-        />
+        <div className="relative">
+          <Textarea
+            id="paste"
+            placeholder="Paste play-by-play text here..."
+            className={`bg-black/50 border-amber-500/20 text-amber-100 placeholder:text-gray-500 ${pasteChunks.length === 0 ? '' : (pasteChunks.length >= 3 ? 'pt-14' : 'pt-10')}`}
+            rows={6}
+            value={pasteDraft}
+            onChange={(e) => setPasteDraft((e.target as HTMLTextAreaElement).value)}
+            onPaste={(e) => {
+              try {
+                const txt = e.clipboardData?.getData('text') || ''
+                if (txt) {
+                  const words = txt.trim().split(/\s+/).filter(Boolean).length
+                  if (words > 15) {
+                    // Long paste => convert to pill and clear field immediately
+                    e.preventDefault()
+                    addChunk(txt)
+                    // leave existing draft as-is
+                  } else {
+                    // Short paste => allow normal behavior; onChange will update draft
+                  }
+                }
+              } catch {}
+            }}
+            onDrop={(e) => {
+              try {
+                const txt = e.dataTransfer?.getData('text') || ''
+                if (txt) {
+                  const words = txt.trim().split(/\s+/).filter(Boolean).length
+                  if (words > 15) {
+                    e.preventDefault()
+                    addChunk(txt)
+                    // keep any existing draft
+                  } // else allow short text drops to remain
+                }
+              } catch {}
+            }}
+          />
+          {/* Attachment pills container: wraps inside the textarea width */}
+          {pasteChunks.length > 0 && (() => {
+            const many = pasteChunks.length >= 3
+            const total = pasteChunks.reduce((s, c) => s + c.words, 0)
+            return (
+              <div className="absolute top-1 left-1 right-1 flex flex-wrap justify-end gap-1 pointer-events-none">
+                {many ? (
+                  <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 shadow-sm pointer-events-auto">
+                    <Paperclip className="w-3.5 h-3.5 text-amber-300" />
+                    <span className="text-[11px] font-mono text-amber-200">Multiple games pasted ({pasteChunks.length}) • {total} words</span>
+                    <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setPasteChunks([])} aria-label="Remove all pasted text" title="Remove all pasted text">
+                      <X className="w-3 h-3 text-amber-200" />
+                    </Button>
+                  </div>
+                ) : (
+                  pasteChunks.map((c) => (
+                    <div key={c.id} className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 shadow-sm pointer-events-auto">
+                      <Paperclip className="w-3.5 h-3.5 text-amber-300" />
+                      <span className="text-[11px] font-mono text-amber-200">pasted text • {c.words} words</span>
+                      <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => removeChunk(c.id)} aria-label="Remove pasted text" title="Remove pasted text">
+                        <X className="w-3 h-3 text-amber-200" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )
+          })()}
+        </div>
+        {/* Hidden file input bound to the Upload button below */}
+        <Input id="file" type="file" accept=".txt,text/plain" className="hidden" onChange={onFileChange} />
         <div className="mt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          {/* Ingest Text */}
           <Button
             onClick={ingestPaste}
             disabled={running}
-            variant="outline"
-            className="w-full sm:w-auto gap-3 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50 font-mono px-4 py-2 transition-all duration-300 shadow-xl hover:shadow-amber-500/25"
+            variant="default"
+            className="w-full sm:w-auto gap-3 font-mono px-4 py-3 sm:py-2 transition-all duration-150 rounded-md
+                       !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300
+                       hover:!from-amber-200 hover:!via-yellow-100 hover:!to-amber-200 active:!from-amber-200 active:!to-amber-200
+                       !text-black !font-semibold tracking-wide uppercase
+                       border border-amber-400/50
+                       shadow-[0_0_0_1px_rgba(251,191,36,0.30),0_10px_25px_-5px_rgba(251,191,36,0.35)]
+                       focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-2 focus:ring-offset-black
+                       disabled:opacity-60"
           >
             {running ? "Processing..." : "INGEST TEXT"}
+          </Button>
+          {/* Upload Data (standard theme) */}
+          <Button
+            asChild
+            variant="outline"
+            className="w-full sm:w-auto gap-2 font-mono px-3 h-10 sm:h-9 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50"
+            disabled={running}
+          >
+            <Label htmlFor="file" className="flex items-center gap-2 cursor-pointer select-none">
+              <Upload className="w-4 h-4" />
+              Upload
+            </Label>
           </Button>
           <Button
             type="button"
             variant="ghost"
             className="text-xs font-mono text-gray-400 w-full sm:w-auto"
-            onClick={() => setPasteText("")}
+            onClick={() => { setPasteDraft(""); setPasteChunks([]) }}
           >
             Clear
           </Button>
@@ -700,18 +789,7 @@ export default function GreenSeamDashboard() {
               />
             </div>
             
-            {/* Stats Display */}
-            <div className="w-full sm:w-auto flex items-center h-9">
-              <div className="p-1.5 bg-gray-800/50 border border-gray-700/50 rounded h-full flex items-center">
-                <div className="text-xs font-mono font-medium text-amber-100 flex items-center gap-1">
-                  <span className="text-gray-400">SO:</span> {globalCounts.so}
-                  <span className="text-gray-500">|</span>
-                  <span className="text-gray-400">BB:</span> {globalCounts.bb}
-                  <span className="text-gray-500">|</span>
-                  <span className="text-gray-400">HR:</span> {globalCounts.hr}
-                </div>
-              </div>
-            </div>
+            {/* Stats Display removed per request */}
             
             {/* Links and Actions */}
             <div className="w-full sm:w-auto">
@@ -738,20 +816,20 @@ export default function GreenSeamDashboard() {
 
       {/* Previous dashboard stat cards */}
       {result?.ok && batters.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8 sm:mb-10">
           <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
-            <CardContent className="p-5">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-amber-500/20 rounded-lg">
                   <BarChart3 className="w-5 h-5 text-amber-300" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-400 font-mono mb-1">ACTIVE BATTERS</p>
-                  <p className="text-2xl font-mono font-bold text-amber-100">{filteredBatters.length}</p>
+                  <p className="text-xs sm:text-sm text-gray-400 font-mono mb-1">ACTIVE BATTERS</p>
+                  <p className="text-xl sm:text-2xl font-mono font-bold text-amber-200">{filteredBatters.length}</p>
                 </div>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+            </CardContent>
+          </Card>
 
             <Card className="bg-gradient-to-br from-black/90 to-gray-900/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
               <CardContent className="p-5">

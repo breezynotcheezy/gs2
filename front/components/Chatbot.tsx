@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { MessageCircle, Send, X, Eye, EyeOff, Trash2, Paperclip } from "lucide-react"
+import { MessageCircle, Send, X, Eye, EyeOff, Paperclip, History } from "lucide-react"
 import type { PlateAppearanceCanonical } from "@gs-src/core/canon/types"
 
 // Session schema used elsewhere in the app
@@ -59,10 +59,12 @@ export default function Chatbot() {
   }])
   const [input, setInput] = useState("")
   const viewRef = useRef<HTMLDivElement>(null)
-  const [scopeFilter, setScopeFilter] = useState(true)
+  const [scopeFilter, setScopeFilter] = useState(false)
   const [filterKeys, setFilterKeys] = useState<string[]>([])
+  // Composer attachment when user pastes text: always hide body and show a pill
+  const [composeAttach, setComposeAttach] = useState<{ text: string; words: number; chars: number } | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
 
-  const session = useMemo(() => loadSession(), [open])
 
   // Load current UI filter from sessionStorage (set by dashboard)
   useEffect(() => {
@@ -82,7 +84,8 @@ export default function Chatbot() {
 
   // Build indices by batter
   const byBatter = useMemo(() => {
-    const plays = Array.isArray(session?.plays) ? session!.plays : []
+    const sessionNow = loadSession()
+    const plays = Array.isArray(sessionNow?.plays) ? sessionNow!.plays : []
     const map = new Map<string, { display: string; pas: PlateAppearanceCanonical[] }>()
     for (const p of plays) {
       const key = nameKey((p.pa as any)?.batter)
@@ -92,7 +95,7 @@ export default function Chatbot() {
       map.get(key)!.pas.push(p.pa)
     }
     return map
-  }, [session])
+  }, [open, messages])
 
   const aliasToKey = useMemo(() => {
     const map = new Map<string, string>()
@@ -112,6 +115,21 @@ export default function Chatbot() {
   }, [messages, open])
 
   const groundedAnswer = useCallback(async (q: string): Promise<string> => {
+    const sessionNow = loadSession()
+    // Build a fresh batter map from the latest session for this question
+    const mapNow = (() => {
+      const plays = Array.isArray(sessionNow?.plays) ? sessionNow!.plays : []
+      const m = new Map<string, { display: string; pas: PlateAppearanceCanonical[] }>()
+      for (let i = 0; i < plays.length; i++) {
+        const p = plays[i]
+        const key = nameKey((p.pa as any)?.batter)
+        if (!key) continue
+        const display = normalizeShortName(String((p.pa as any)?.batter || "")) || (p.pa as any)?.batter || key
+        if (!m.has(key)) m.set(key, { display, pas: [] })
+        m.get(key)!.pas.push(p.pa)
+      }
+      return m
+    })()
     // Try to detect a batter target
     const qnorm = q.replace(/\s+/g, " ").trim()
     const m2 = qnorm.match(/\b([A-Za-z])\s*([A-Za-z])\b/)
@@ -119,26 +137,34 @@ export default function Chatbot() {
     if (m2) {
       candidate = (m2[1] + m2[2]).toLowerCase()
     }
-    // Also attempt direct name match
+    // Also attempt direct name match using a fresh alias map for this question
+    const aliasNow = (() => {
+      const m = new Map<string, string>()
+      mapNow.forEach((v, k) => {
+        const shorty = normalizeShortName(String((v.pas[0] as any)?.batter || v.display))
+        const alias = shorty.replace(/\s+/g, "").toLowerCase()
+        if (alias) m.set(alias, k)
+        m.set(String(v.display || "").replace(/\s+/g, " ").trim().toLowerCase(), k)
+      })
+      return m
+    })()
     let key: string | undefined
-    if (candidate && aliasToKey.has(candidate)) key = aliasToKey.get(candidate)
+    if (candidate && aliasNow.has(candidate)) key = aliasNow.get(candidate)
     if (!key) {
       const words = qnorm.toLowerCase()
-      aliasToKey.forEach((k, alias) => {
-        if (!key && words.includes(alias)) key = k
-      })
+      aliasNow.forEach((k, alias) => { if (!key && words.includes(alias)) key = k })
     }
 
-    if (!byBatter || byBatter.size === 0) {
+    if (!mapNow || mapNow.size === 0) {
       return "No plays loaded yet. Ingest some data first."
     }
 
     if (!key) {
-      const names = Array.from(byBatter.values()).slice(0, 12).map(v => v.display).join(", ")
+      const names = Array.from(mapNow.values()).slice(0, 12).map(v => v.display).join(", ")
       return `Please mention a batter (initials or name). Known batters: ${names || '—'}`
     }
 
-    const entry = byBatter.get(key!)
+    const entry = mapNow.get(key!)
     if (!entry) return "I couldn’t find that batter in the current session."
 
     if (scopeFilter && Array.isArray(filterKeys) && filterKeys.length > 0 && !filterKeys.includes(key!)) {
@@ -218,7 +244,7 @@ export default function Chatbot() {
       // Include any known segments for this batter to improve tips while remaining grounded
       const segs: string[] = []
       try {
-        const plays = Array.isArray(session?.plays) ? session!.plays : []
+        const plays = Array.isArray(sessionNow?.plays) ? sessionNow!.plays : []
         for (let i = 0; i < plays.length; i++) {
           const p = plays[i]
           const k = nameKey((p.pa as any)?.batter)
@@ -249,30 +275,32 @@ export default function Chatbot() {
     lines.push("Note: Answers are derived strictly from observed events in your session. I won’t speculate beyond available fields.")
 
     return lines.join("\n")
-  }, [aliasToKey, byBatter, scopeFilter, filterKeys, session])
+  }, [aliasToKey, byBatter, scopeFilter, filterKeys])
 
   const send = useCallback(async () => {
-    const q = input.replace(/\s+/g, " ").trim()
+    const fromAttach = composeAttach?.text || ""
+    const qRaw = fromAttach ? fromAttach : input
+    const q = qRaw.replace(/\s+/g, " ").trim()
     if (!q) return
-    const WORD_THRESHOLD = 30
     const id = `${Date.now()}-${Math.random().toString(36).slice(2,7)}`
     const words = q ? q.split(/\s+/).filter(Boolean).length : 0
-    const isLong = words > WORD_THRESHOLD
+    // If content came from paste, always treat as attachment (hide body)
+    const isFromPaste = !!fromAttach
+    const isLong = isFromPaste ? true : (words > 30)
     const collapsed = isLong
     const attachment = isLong ? { type: 'text' as const, words, chars: q.length } : undefined
     setMessages((m) => [...m, { id, role: 'user', text: q, collapsed, attachment }])
     setInput("")
+    setComposeAttach(null)
     const a = await groundedAnswer(q)
     setMessages((m) => [...m, { id: `${id}-a`, role: 'assistant', text: a }])
-  }, [groundedAnswer, input])
+  }, [groundedAnswer, input, composeAttach])
 
   const toggleCollapse = useCallback((id: string) => {
     setMessages((m) => m.map(msg => msg.id === id ? { ...msg, collapsed: !msg.collapsed } : msg))
   }, [])
 
-  const deleteMessage = useCallback((id: string) => {
-    setMessages((m) => m.filter(msg => msg.id !== id))
-  }, [])
+  // Per request: message deletion removed
 
   return (
     <>
@@ -280,7 +308,10 @@ export default function Chatbot() {
       <div className="fixed bottom-4 right-4 z-50">
         <Button
           onClick={() => setOpen((v) => !v)}
-          className="h-12 w-12 rounded-full p-0 bg-amber-500/90 hover:bg-amber-500 text-black shadow-2xl border border-amber-300/60 backdrop-blur"
+          className="h-12 w-12 rounded-full p-0
+                     !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300
+                     hover:!from-amber-200 hover:!via-yellow-100 hover:!to-amber-200 active:!from-amber-200 active:!to-amber-200
+                     !text-black shadow-2xl border border-amber-400/60 backdrop-blur"
           aria-label={open ? "Close assistant" : "Open assistant"}
           title={open ? "Close assistant" : "Open assistant"}
         >
@@ -293,46 +324,53 @@ export default function Chatbot() {
         <div className="fixed bottom-20 right-4 w-[92vw] max-w-sm z-50">
           <Card className="bg-gradient-to-br from-gray-900/95 via-black/90 to-gray-900/95 border border-amber-500/30 backdrop-blur-xl shadow-2xl">
             <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm font-mono text-amber-200">GreenSeam Assistant</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-mono text-amber-200">GreenSeam Assistant</CardTitle>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-amber-200 hover:text-amber-100" onClick={() => setShowHistory((v) => !v)} aria-label="Recent chats" title="Recent chats">
+                  <History className="w-4 h-4" />
+                </Button>
+              </div>
+              {showHistory && (
+                <div className="mt-2 rounded-md border border-amber-500/20 bg-black/60 p-2 max-h-40 overflow-y-auto space-y-1">
+                  {messages.filter(m => m.role === 'user').slice(-8).reverse().map((m) => (
+                    <button
+                      key={`hist-${m.id}`}
+                      className="w-full text-left text-[11px] font-mono text-amber-100/90 hover:text-amber-100 hover:bg-amber-500/10 rounded px-2 py-1"
+                      onClick={() => { setInput(m.text); setShowHistory(false); }}
+                    >
+                      {m.text.length > 80 ? m.text.slice(0, 80) + '…' : m.text}
+                    </button>
+                  ))}
+                  {messages.filter(m => m.role === 'user').length === 0 && (
+                    <div className="text-[11px] font-mono text-gray-500 px-2">No recent chats.</div>
+                  )}
+                </div>
+              )}
             </CardHeader>
             <CardContent className="px-3 pb-3">
-              <div ref={viewRef} className="h-60 overflow-y-auto space-y-2 pr-1">
+              <div ref={viewRef} className="h-60 overflow-y-auto nice-scroll space-y-2 pr-1">
                 {messages.map((m) => {
                   const isUser = m.role === 'user'
                   const isLong = !!m.attachment && m.attachment.type === 'text'
-                  const collapsed = !!m.collapsed && isLong
                   const wordsInMsg = m.attachment?.words ?? (typeof m.text === 'string' ? (m.text.trim().split(/\s+/).filter(Boolean).length) : 0)
                   return (
-                    <div key={m.id} className="group border border-amber-500/20 rounded-md p-2 bg-black/30">
-                      {/* Attachment pill for long pasted text */}
-                      {isUser && isLong && (
-                        <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5">
-                          <Paperclip className="w-3.5 h-3.5 text-amber-300" />
-                          <span className="text-[11px] font-mono text-amber-200">pasted text • {wordsInMsg} words</span>
-                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => deleteMessage(m.id)} aria-label="Remove pasted text" title="Remove pasted text">
-                            <X className="w-3 h-3 text-amber-200" />
-                          </Button>
-                        </div>
-                      )}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className={`${isUser ? 'text-amber-100' : 'text-gray-200'} text-sm font-mono whitespace-pre-wrap break-words max-w-full`}>
-                          {isUser && collapsed ? (
-                            <span className="italic text-gray-400">[pasted text • {wordsInMsg} words]</span>
-                          ) : (
-                            <span>{m.text}</span>
-                          )}
-                        </div>
-                        {/* Actions */}
-                        <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100">
-                          {isUser && isLong && (
-                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => toggleCollapse(m.id)} aria-label={collapsed ? 'Show' : 'Collapse'} title={collapsed ? 'Show' : 'Collapse'}>
-                              {collapsed ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                            </Button>
-                          )}
-                          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => deleteMessage(m.id)} aria-label="Delete" title="Delete">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
+                    <div key={m.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] rounded-lg px-3 py-2 border ${isUser ? 'bg-amber-500/10 border-amber-500/30' : 'bg-black/30 border-amber-500/20'}`}>
+                        {/* Attachment pill for long pasted user text */}
+                        {isUser && isLong && (
+                          <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5">
+                            <Paperclip className="w-3.5 h-3.5 text-amber-300" />
+                            <span className="text-[11px] font-mono text-amber-200">pasted text • {wordsInMsg} words</span>
+                          </div>
+                        )}
+                        {/* Message body: hide long pasted content for user */}
+                        {!isUser || !isLong ? (
+                          <div className={`${isUser ? 'text-amber-100' : 'text-gray-200'} text-sm font-mono whitespace-pre-wrap break-words`}>
+                            {m.text}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] italic text-gray-500 font-mono">(pasted attachment)</div>
+                        )}
                       </div>
                     </div>
                   )
@@ -340,15 +378,44 @@ export default function Chatbot() {
               </div>
               {/* Controls removed per request: batter prefill & scope toggle */}
               {/* Compose */}
-              <div className="mt-2 flex items-center gap-2">
-                <Input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void send() } }}
-                  placeholder="Ask about a batter..."
-                  className="bg-black/40 border-amber-500/30 text-amber-100"
-                />
-                <Button onClick={() => void send()} variant="outline" className="px-3 h-9 border-amber-500/40">
+              <div className="mt-2 flex items-center gap-2 w-full">
+                <div className="relative flex-1">
+                  <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onPaste={(e) => {
+                      try {
+                        const txt = e.clipboardData?.getData('text') || ''
+                        if (txt) {
+                          e.preventDefault()
+                          const words = txt.trim().split(/\s+/).filter(Boolean).length
+                          setComposeAttach({ text: txt, words, chars: txt.length })
+                          setInput('')
+                        }
+                      } catch {}
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void send() } }}
+                    placeholder="Ask about a batter..."
+                    className={`bg-black/40 border-amber-500/30 text-amber-100 ${composeAttach ? 'pr-28' : ''}`}
+                  />
+                  {composeAttach && (
+                    <div className="absolute -top-2 right-1 translate-y-[-100%] inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 shadow-sm">
+                      <Paperclip className="w-3.5 h-3.5 text-amber-300" />
+                      <span className="text-[11px] font-mono text-amber-200">pasted text • {composeAttach.words} words</span>
+                      <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setComposeAttach(null)} aria-label="Remove pasted text" title="Remove pasted text">
+                        <X className="w-3 h-3 text-amber-200" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <Button
+                  onClick={() => void send()}
+                  variant="default"
+                  className="px-3 h-9
+                             !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300
+                             hover:!from-amber-200 hover:!via-yellow-100 hover:!to-amber-200 active:!from-amber-200 active:!to-amber-200
+                             !text-black !font-semibold border border-amber-400/50"
+                >
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
