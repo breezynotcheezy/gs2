@@ -150,6 +150,7 @@ export default function GreenSeamDashboard() {
   type PasteChunk = { id: string; text: string; words: number; chars: number }
   const [pasteChunks, setPasteChunks] = useState<PasteChunk[]>([])
   const [pasteDraft, setPasteDraft] = useState<string>("")
+  const [mobileExpand, setMobileExpand] = useState<Record<string, boolean>>({})
   const addChunk = useCallback((txt: string) => {
     const t = (txt || "").trim()
     if (!t) return
@@ -632,13 +633,12 @@ export default function GreenSeamDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <div className="flex flex-col items-center justify-center mb-8">
-        <div className="text-center mb-3 sm:mb-4">
-          <h1 className="text-3xl sm:text-6xl font-mono font-bold bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent mb-2 drop-shadow-2xl">
+      <div className="flex flex-col items-center justify-center mb-8 w-full">
+        <div className="w-full text-center mb-2 sm:mb-4">
+          <h1 className="text-5xl sm:text-7xl font-mono font-bold tracking-wider bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 bg-clip-text text-transparent drop-shadow-2xl">
             GREENSEAM AI
           </h1>
         </div>
-
         {/* Upload moved below into action row under Paste Data */}
       </div>
 
@@ -714,13 +714,13 @@ export default function GreenSeamDashboard() {
         </div>
         {/* Hidden file input bound to the Upload button below */}
         <Input id="file" type="file" accept=".txt,text/plain" className="hidden" onChange={onFileChange} />
-        <div className="mt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <div className="mt-2 grid grid-cols-2 sm:flex sm:flex-row items-stretch sm:items-center gap-2">
           {/* Ingest Text */}
           <Button
             onClick={ingestPaste}
             disabled={running}
             variant="default"
-            className="w-full sm:w-auto gap-3 font-mono px-4 py-3 sm:py-2 transition-all duration-150 rounded-md
+            className="w-full sm:w-auto gap-3 font-mono px-3 h-12 sm:h-10 transition-all duration-150 rounded-md
                        !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300
                        hover:!from-amber-200 hover:!via-yellow-100 hover:!to-amber-200 active:!from-amber-200 active:!to-amber-200
                        !text-black !font-semibold tracking-wide uppercase
@@ -735,7 +735,7 @@ export default function GreenSeamDashboard() {
           <Button
             asChild
             variant="outline"
-            className="w-full sm:w-auto gap-2 font-mono px-3 h-10 sm:h-9 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50"
+            className="w-full sm:w-auto gap-2 font-mono px-3 h-12 sm:h-10 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50"
             disabled={running}
           >
             <Label htmlFor="file" className="flex items-center gap-2 cursor-pointer select-none">
@@ -746,7 +746,7 @@ export default function GreenSeamDashboard() {
           <Button
             type="button"
             variant="ghost"
-            className="text-xs font-mono text-gray-400 w-full sm:w-auto"
+            className="col-span-2 sm:col-span-1 text-xs font-mono text-gray-400 w-full sm:w-auto"
             onClick={() => { setPasteDraft(""); setPasteChunks([]) }}
           >
             Clear
@@ -816,85 +816,73 @@ export default function GreenSeamDashboard() {
 
       {/* Previous dashboard stat cards */}
       {result?.ok && batters.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8 sm:mb-10">
-          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
-            <CardContent className="p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-500/20 rounded-lg">
-                  <BarChart3 className="w-5 h-5 text-amber-300" />
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-400 font-mono mb-1">ACTIVE BATTERS</p>
-                  <p className="text-xl sm:text-2xl font-mono font-bold text-amber-200">{filteredBatters.length}</p>
-                </div>
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-6 sm:mb-10">
+          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
+            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center text-center">
+              <div className="mb-1.5 sm:mb-2 inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
+                <BarChart3 className="w-5 h-5 text-amber-300" />
               </div>
+              <p className="text-[10px] sm:text-sm text-gray-400 font-mono tracking-wide">ACTIVE BATTERS</p>
+              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-200 leading-tight">{filteredBatters.length}</p>
             </CardContent>
           </Card>
 
-            <Card className="bg-gradient-to-br from-black/90 to-gray-900/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500/20 rounded-lg">
-                    <Activity className="w-5 h-5 text-amber-300" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400 font-mono mb-1">AVERAGE CONFIDENCE</p>
-                    <p className="text-2xl font-mono font-bold text-amber-100">{
-                      (() => {
-                        const arr: PlateAppearanceCanonical[] = (result?.data || []) as any
-                        const avg = arr.reduce((s: number, p: any) => s + (p.confidence || 0), 0) / Math.max(1, arr.length)
-                        return `${Math.round(avg * 100)}%`
-                      })()
-                    }</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
+            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center text-center">
+              <div className="mb-1.5 sm:mb-2 inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
+                <Activity className="w-5 h-5 text-amber-300" />
+              </div>
+              <p className="text-[10px] sm:text-sm text-gray-400 font-mono tracking-wide">AVERAGE CONFIDENCE</p>
+              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-100 leading-tight">{
+                (() => {
+                  const arr: PlateAppearanceCanonical[] = (result?.data || []) as any
+                  const avg = arr.reduce((s: number, p: any) => s + (p.confidence || 0), 0) / Math.max(1, arr.length)
+                  return `${Math.round(avg * 100)}%`
+                })()
+              }</p>
+            </CardContent>
+          </Card>
 
-            <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500/20 rounded-lg">
-                    <Brain className="w-5 h-5 text-amber-300" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400 font-mono mb-1">AI INSIGHTS</p>
-                    <p className="text-2xl font-mono font-bold text-amber-100">{
-                      filteredBatters.reduce((s, b) => s + (b.swing_mechanic ? 1 : 0) + (b.positional ? 1 : 0) + (b.opponent_pattern ? 1 : 0), 0)
-                    }</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
+            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center text-center">
+              <div className="mb-1.5 sm:mb-2 inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
+                <Brain className="w-5 h-5 text-amber-300" />
+              </div>
+              <p className="text-[10px] sm:text-sm text-gray-400 font-mono tracking-wide">AI INSIGHTS</p>
+              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-100 leading-tight">{
+                filteredBatters.reduce((s, b) => s + (b.swing_mechanic ? 1 : 0) + (b.positional ? 1 : 0) + (b.opponent_pattern ? 1 : 0), 0)
+              }</p>
+            </CardContent>
+          </Card>
 
-            <Card className="bg-gradient-to-br from-black/90 to-gray-900/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 transition-all duration-300 shadow-2xl hover:shadow-amber-500/20">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500/20 rounded-lg">
-                    <Zap className="w-5 h-5 text-amber-300" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400 font-mono mb-1">TOTAL PAs</p>
-                    <p className="text-2xl font-mono font-bold text-amber-100">{(result?.data || []).length}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
+            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center text-center">
+              <div className="mb-1.5 sm:mb-2 inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
+                <Zap className="w-5 h-5 text-amber-300" />
+              </div>
+              <p className="text-[10px] sm:text-sm text-gray-400 font-mono tracking-wide">TOTAL PAs</p>
+              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-100 leading-tight">{(result?.data || []).length}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
         {/* Previous batter cards with insights */}
         {result?.ok && filteredBatters.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
             {filteredBatters.map((batter, i) => (
               <Card
                 key={`${batter.name}-${i}`}
                 className="relative overflow-hidden bg-gradient-to-br from-gray-900/95 via-black/90 to-gray-900/95 backdrop-blur-xl border border-amber-500/20 hover:border-amber-400/40 transition-all duration-500 shadow-2xl hover:shadow-amber-500/25 hover:scale-[1.02] transform"
               >
                 <CardHeader className="pb-4 relative">
-                  <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div
+                    className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:cursor-default cursor-pointer"
+                    onClick={() => setMobileExpand((s) => ({ ...s, [batter.key]: !s[batter.key] }))}
+                    aria-expanded={!!mobileExpand[batter.key]}
+                  >
                     <div>
-                      <CardTitle className="text-xl text-amber-100 font-mono font-bold mb-1 drop-shadow-lg">
+                      <CardTitle className="text-lg sm:text-xl text-amber-100 font-mono font-bold mb-1 drop-shadow-lg">
                         {batter.name}
                       </CardTitle>
                       <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
@@ -908,7 +896,7 @@ export default function GreenSeamDashboard() {
                         <Button
                           size="icon"
                           variant="destructive"
-                          className="h-10 w-10 sm:h-8 sm:w-8"
+                          className="h-9 w-9 sm:h-8 sm:w-8"
                           aria-label={`Delete ${batter.name}`}
                           title={`Delete ${batter.name}`}
                           onClick={() => { setConfirmTarget({ type: 'batter', key: batter.key, name: batter.name }); setConfirmOpen(true) }}
@@ -918,7 +906,7 @@ export default function GreenSeamDashboard() {
                         <Button
                           size="icon"
                           variant="outline"
-                          className="h-10 w-10 sm:h-8 sm:w-8"
+                          className="h-9 w-9 sm:h-8 sm:w-8"
                           aria-label={`Share ${batter.name}`}
                           title={`Share ${batter.name}`}
                           onClick={() => { void shareBatter({ name: batter.name }) }}
@@ -935,6 +923,28 @@ export default function GreenSeamDashboard() {
                 </CardHeader>
 
                 <CardContent className="space-y-4 relative">
+                  {/* Mobile compact overview */}
+                  <div className="sm:hidden space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-mono text-gray-300">
+                      <span>{batter.totals.pas} PA</span>
+                      <span>Contact {(batter.totals.contactRate * 100).toFixed(0)}%</span>
+                      <span>K {(batter.totals.strikeoutRate * 100).toFixed(0)}%</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="w-full h-8 text-[11px] font-mono"
+                      onClick={() => setMobileExpand((s) => ({ ...s, [batter.key]: !s[batter.key] }))}
+                    >
+                      {mobileExpand[batter.key] ? 'Hide details' : 'View details'}
+                    </Button>
+                  </div>
+
+                  {/* Details: animated expand on mobile, always visible on desktop */}
+                  <div
+                    className={`block overflow-hidden motion-safe:transition-all motion-safe:duration-300
+                               ${mobileExpand[batter.key] ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'}
+                               sm:max-h-none sm:opacity-100`}
+                  >
                   {/* Key Rates */}
                   <div className="grid grid-cols-3 gap-2">
                     <div className="text-center p-3 bg-gray-800/50 border border-gray-700/50 rounded hover:border-amber-500/30 transition-all duration-300">
@@ -1102,6 +1112,7 @@ export default function GreenSeamDashboard() {
                       <TrendingUp className="w-5 h-5" />
                       FULL ANALYSIS
                     </Button>
+                  </div>
                   </div>
                 </CardContent>
               </Card>
