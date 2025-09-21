@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { MessageCircle, Send, X, Eye, EyeOff, Paperclip, History } from "lucide-react"
+import { MessageCircle, Send, X, Eye, EyeOff, Paperclip, History, Loader2 } from "lucide-react"
 import type { PlateAppearanceCanonical } from "@gs-src/core/canon/types"
 
 // Session schema used elsewhere in the app
@@ -55,8 +55,9 @@ export default function Chatbot() {
   const [messages, setMessages] = useState<Msg[]>([{
     id: String(Date.now()),
     role: "assistant",
-    text: "Hello! I can answer any questions you may have about the players in the current dataset. Ask for a player by initials or name, e.g. ‘What does JM strike out on?’ or ‘How should we pitch OM?’",
+    text: "Ask me about any hitter (initials or name), a quick plan vs someone, or say ‘make a lineup’. I’ll keep it short.",
   }])
+  const [busy, setBusy] = useState(false)
   const [input, setInput] = useState("")
   const viewRef = useRef<HTMLDivElement>(null)
   const [scopeFilter, setScopeFilter] = useState(false)
@@ -132,6 +133,8 @@ export default function Chatbot() {
     })()
     // Try to detect a batter target
     const qnorm = q.replace(/\s+/g, " ").trim()
+    const low = qnorm.toLowerCase()
+    const wantsPitchPlan = /(how\s+should\s+i\s+pitch|how\s+to\s+pitch|pitch\s+against|plan\s+vs|vs\s+[A-Za-z])/i.test(qnorm)
     const m2 = qnorm.match(/\b([A-Za-z])\s*([A-Za-z])\b/)
     let candidate: string | null = null
     if (m2) {
@@ -144,7 +147,13 @@ export default function Chatbot() {
         const shorty = normalizeShortName(String((v.pas[0] as any)?.batter || v.display))
         const alias = shorty.replace(/\s+/g, "").toLowerCase()
         if (alias) m.set(alias, k)
-        m.set(String(v.display || "").replace(/\s+/g, " ").trim().toLowerCase(), k)
+        const displayLc = String(v.display || "").replace(/\s+/g, " ").trim().toLowerCase()
+        m.set(displayLc, k)
+        // Map tokens (first/last names) to help match queries like 'brown?'
+        displayLc.split(/\s+/).forEach(tok => {
+          const t = tok.replace(/[^a-z]/g, "")
+          if (t.length >= 2) m.set(t, k)
+        })
       })
       return m
     })()
@@ -159,9 +168,31 @@ export default function Chatbot() {
       return "No plays loaded yet. Ingest some data first."
     }
 
+    // Special: lineup request without naming batters explicitly
+    const wantsLineup = /\b(lineup|order|batting order)\b/.test(low)
+    if (!key && wantsLineup) {
+      // Build simple lineup from all available (or filtered when enabled)
+      const entries = Array.from(mapNow.entries()).map(([k, v]) => {
+        const pas = v.pas
+        const n = pas.length
+        const contact = n ? pas.filter((p: any) => ['gb','fb','ld','single','double','triple','hr','reached_on_error','fielder_choice'].includes((p as any).pa_result)).length / n : 0
+        const power = pas.filter((p: any) => ['double','triple','hr'].includes((p as any).pa_result)).length
+        return { key: k, name: v.display, n, contact, power }
+      })
+      const pool = entries.filter(e => !scopeFilter || filterKeys.includes(e.key))
+      if (pool.length === 0) return "No eligible hitters yet."
+      const sorted = pool.sort((a, b) => (b.contact - a.contact) || (b.power - a.power) || (b.n - a.n))
+      const names = sorted.slice(0, 9).map(e => e.name)
+      return `Suggested lineup: ${names.join(', ')}.`
+    }
+
+    // If they want a pitching plan but didn't name a hitter, give a short, generic plan
+    if (!key && wantsPitchPlan) {
+      return "Default: work away, change speeds, keep it low."
+    }
+
     if (!key) {
-      const names = Array.from(mapNow.values()).slice(0, 12).map(v => v.display).join(", ")
-      return `Please mention a batter (initials or name). Known batters: ${names || '—'}`
+      return "Tell me a hitter (initials or name), or say ‘make a lineup’."
     }
 
     const entry = mapNow.get(key!)
@@ -198,46 +229,36 @@ export default function Chatbot() {
       hr: cnt((p: any) => p.pa_result === 'hr'),
     }
 
-    const lines: string[] = []
-    lines.push(`${entry.display}: ${n} PA. K% ${Math.round(kRate*100)}%, BB% ${Math.round(bbRate*100)}%, Contact% ${Math.round(contactRate*100)}%.”`)
+    // If the user asked for a pitching plan, prioritize concise directives (no stat lines)
+    if (wantsPitchPlan) {
+      if (n < 3) return `work away, change speeds, keep it low.`
+      const bbTotal = battedBall.gb + battedBall.fb + battedBall.ld + battedBall.hr
+      const tips: string[] = []
+      if (bbTotal >= 4 && battedBall.gb / bbTotal >= 0.6) tips.push("keep it low and away; infield normal")
+      if (bbTotal >= 4 && battedBall.fb / bbTotal >= 0.6) tips.push("work down; outfield a step deep")
+      if (strikeouts.length >= 2 && kSwing > kCalled) tips.push("elevate when ahead")
+      if (strikeouts.length >= 2 && kCalled > kSwing) tips.push("paint edges early, expand late")
+      if (bbRate >= 0.12) tips.push("pound the zone early")
+      if (contactRate >= 0.8 && kRate <= 0.15) tips.push("mix speeds and avoid the middle")
+      const unique = Array.from(new Set(tips)).slice(0, 2)
+      return unique.length ? `${unique.join('; ')}.` : `work away and change speeds.`
+    }
 
-    if (strikeouts.length >= 1) {
-      lines.push(`Strikeouts involve swinging strikes in ${kSwing}/${strikeouts.length} PAs and called strikes in ${kCalled}/${strikeouts.length} PAs.`)
-    } else {
-      lines.push(`No strikeouts observed in current data.`)
+    // If very low data, keep it ultra short (non-pitching queries)
+    if (n < 3) {
+      return `${entry.display}: not enough data for a reliable read.`
     }
 
     const bbTotal = battedBall.gb + battedBall.fb + battedBall.ld + battedBall.hr
-    if (bbTotal >= 3) {
-      const pct = (v: number) => `${Math.round((v / bbTotal) * 100)}%`
-      lines.push(`Batted ball: GB ${pct(battedBall.gb)}, FB ${pct(battedBall.fb)}, LD ${pct(battedBall.ld)}, HR ${pct(battedBall.hr)}.`)
-    } else {
-      lines.push(`Not enough batted-ball events to infer tendencies.`)
-    }
 
-    // Pitch event mix across all PAs
-    const pitchMix: Record<string, number> = {}
-    for (let i = 0; i < pas.length; i++) {
-      const evs = Array.isArray((pas[i] as any).pitches) ? (pas[i] as any).pitches : []
-      for (let j = 0; j < evs.length; j++) {
-        const ev = String(evs[j] || '')
-        pitchMix[ev] = (pitchMix[ev] || 0) + 1
-      }
-    }
-    const totalPitchEvents = Object.values(pitchMix).reduce((a, b) => a + b, 0)
-    if (totalPitchEvents >= 5) {
-      const keys = Object.keys(pitchMix).sort((a, b) => (pitchMix[b] || 0) - (pitchMix[a] || 0))
-      const top = keys.slice(0, 5).map(k => `${k.replace(/_/g, ' ')} ${Math.round((pitchMix[k] / totalPitchEvents) * 100)}%`)
-      if (top.length) lines.push(`Pitch event mix (top): ${top.join(', ')}.`)
-    }
+    // Otherwise, return a single grounded tip (no stat lines)
+    let tip = ""
+    if (strikeouts.length >= 2 && kSwing > kCalled) tip = "elevate when ahead"
+    else if (strikeouts.length >= 2 && kCalled > kSwing) tip = "paint edges early"
+    else if (bbTotal >= 4 && battedBall.gb / bbTotal >= 0.6) tip = "keep it low"
+    else if (bbTotal >= 4 && battedBall.fb / bbTotal >= 0.6) tip = "outfield a step deep"
 
-    // Last 5 results trend
-    const last5 = pas.slice(-5)
-    if (last5.length >= 2) {
-      const lab = (r?: string) => r ? r.toUpperCase() : '—'
-      const seq = last5.map((p: any) => lab(p.pa_result)).join(' → ')
-      lines.push(`Last ${last5.length} results: ${seq}.`)
-    }
+    const aiParts: string[] = []
 
     // If available, fetch AI tips (already constrained server-side to empty when insufficient)
     try {
@@ -262,19 +283,14 @@ export default function Chatbot() {
       const json = await resp.json().catch(() => ({}))
       clearTimeout(tid)
       if (json && json.ok) {
-        const parts: string[] = []
-        if (typeof json.swing_mechanic === 'string' && json.swing_mechanic.trim()) parts.push(`Swing mechanic: ${json.swing_mechanic.trim()}`)
-        if (typeof json.positional === 'string' && json.positional.trim()) parts.push(`Positional: ${json.positional.trim()}`)
-        if (typeof json.opponent_pattern === 'string' && json.opponent_pattern.trim()) parts.push(`Opponent pattern: ${json.opponent_pattern.trim()}`)
-        const conf = typeof json.confidence === 'number' ? json.confidence : 0
-        if (parts.length) lines.push(`AI tip (confidence ${Math.round(conf*100)}%): ${parts.join(' | ')}`)
+        if (typeof json.swing_mechanic === 'string' && json.swing_mechanic.trim()) aiParts.push(json.swing_mechanic.trim())
+        if (typeof json.positional === 'string' && json.positional.trim()) aiParts.push(json.positional.trim())
+        if (typeof json.opponent_pattern === 'string' && json.opponent_pattern.trim()) aiParts.push(json.opponent_pattern.trim())
       }
     } catch {}
 
-    // Guardrails: never extrapolate beyond observed fields
-    lines.push("Note: Answers are derived strictly from observed events in your session. I won’t speculate beyond available fields.")
-
-    return lines.join("\n")
+    const allTips = [tip, ...aiParts].filter(Boolean)
+    return allTips.length ? `${entry.display}: ${allTips[0]}.` : `${entry.display}: no clear read.`
   }, [aliasToKey, byBatter, scopeFilter, filterKeys])
 
   const send = useCallback(async () => {
@@ -292,8 +308,15 @@ export default function Chatbot() {
     setMessages((m) => [...m, { id, role: 'user', text: q, collapsed, attachment }])
     setInput("")
     setComposeAttach(null)
-    const a = await groundedAnswer(q)
-    setMessages((m) => [...m, { id: `${id}-a`, role: 'assistant', text: a }])
+    try {
+      setBusy(true)
+      const a = await groundedAnswer(q)
+      setMessages((m) => [...m, { id: `${id}-a`, role: 'assistant', text: a }])
+    } catch {
+      setMessages((m) => [...m, { id: `${id}-a`, role: 'assistant', text: 'Sorry—something went wrong.' }])
+    } finally {
+      setBusy(false)
+    }
   }, [groundedAnswer, input, composeAttach])
 
   const toggleCollapse = useCallback((id: string) => {
@@ -375,6 +398,14 @@ export default function Chatbot() {
                     </div>
                   )
                 })}
+                {busy && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] rounded-lg px-3 py-2 border bg-black/30 border-amber-500/20 text-gray-300 inline-flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
+                      <span className="text-sm font-mono">Thinking…</span>
+                    </div>
+                  </div>
+                )}
               </div>
               {/* Controls removed per request: batter prefill & scope toggle */}
               {/* Compose */}

@@ -492,6 +492,73 @@ export default function GreenSeamDashboard() {
     })
   }, [batters, aiByName])
 
+  // Mobile/full-page detail overlay state and helpers
+  const [activeDetailKey, setActiveDetailKey] = useState<string | null>(null)
+  const [overlayAnim, setOverlayAnim] = useState<"enter" | "exit" | null>(null)
+  const activeBatter = useMemo(() => {
+    if (!activeDetailKey) return null as null | typeof battersAI[number]
+    return battersAI.find((b) => b.key === activeDetailKey) || null
+  }, [battersAI, activeDetailKey])
+
+  // Track mobile viewport (Tailwind 'sm' breakpoint = 640px)
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      const mq = window.matchMedia('(max-width: 639px)')
+      const update = () => setIsMobile(mq.matches)
+      update()
+      if (mq.addEventListener) mq.addEventListener('change', update)
+      else mq.addListener(update)
+      return () => {
+        if (mq.removeEventListener) mq.removeEventListener('change', update)
+        else mq.removeListener(update)
+      }
+    } catch {}
+  }, [])
+
+  const openDetailOverlay = useCallback((key: string) => {
+    try {
+      setActiveDetailKey(key)
+      setOverlayAnim("exit")
+      // Next tick -> trigger enter for smooth transition
+      setTimeout(() => setOverlayAnim("enter"), 0)
+    } catch {}
+  }, [])
+
+  const closeDetailOverlay = useCallback(() => {
+    try {
+      setOverlayAnim("exit")
+      setTimeout(() => { setActiveDetailKey(null); setOverlayAnim(null) }, 300)
+    } catch {}
+  }, [])
+
+  // Lock page scroll while overlay is open
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      const body = document?.body
+      if (!body) return
+      if (isMobile && activeDetailKey) {
+        const prev = body.style.overflow
+        body.setAttribute('data-prev-overflow', prev)
+        body.style.overflow = 'hidden'
+      } else {
+        const prev = body.getAttribute('data-prev-overflow') || ''
+        body.style.overflow = prev
+        body.removeAttribute('data-prev-overflow')
+      }
+    } catch {}
+  }, [activeDetailKey, isMobile])
+
+  // Close overlay with Escape key
+  useEffect(() => {
+    if (!(isMobile && activeDetailKey)) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeDetailOverlay() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [activeDetailKey, closeDetailOverlay, isMobile])
+
   const globalCounts = useMemo(() => {
     const arr: PlateAppearanceCanonical[] = (result?.data || []) as any
     const counts = { so: 0, bb: 0, hr: 0 }
@@ -759,45 +826,55 @@ export default function GreenSeamDashboard() {
       {/* Filters and quick summary */}
       {result?.ok && batters.length > 0 && (
         <div className="mb-6">
-          <div className="flex flex-col sm:flex-row items-end justify-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full px-2 sm:px-0">
             {/* Filter Dropdown */}
-            <div className="w-full sm:w-48">
+            <div className="w-full max-w-[280px] sm:w-48 mx-auto text-center sm:text-left">
               <Label className="text-xs font-mono text-gray-400 mb-1 block">Result Filter</Label>
-              <Select value={resultFilter} onValueChange={(v) => setResultFilter(v as any)}>
-                <SelectTrigger className="bg-black/50 border-amber-500/20 text-amber-100 w-full h-9">
-                  <SelectValue placeholder="All Results" />
-                </SelectTrigger>
-                <SelectContent className="bg-black/90 border-amber-500/20 text-amber-100">
-                  <SelectItem value="all">All Results</SelectItem>
-                  <SelectItem value="so">Strikeouts (SO)</SelectItem>
-                  <SelectItem value="bb">Walks (BB)</SelectItem>
-                  <SelectItem value="hr">Home Runs (HR)</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex justify-center sm:block">
+                <Select value={resultFilter} onValueChange={(v) => setResultFilter(v as any)}>
+                  <SelectTrigger className="bg-black/50 border-amber-500/20 text-amber-100 w-full h-9">
+                    <SelectValue placeholder="All Results" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-black/90 border-amber-500/20 text-amber-100">
+                    <SelectItem value="all">All Results</SelectItem>
+                    <SelectItem value="so">Strikeouts (SO)</SelectItem>
+                    <SelectItem value="bb">Walks (BB)</SelectItem>
+                    <SelectItem value="hr">Home Runs (HR)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             
             {/* Min PA Input */}
-            <div className="w-full sm:w-32">
+            <div className="w-full max-w-[280px] sm:w-32 mx-auto text-center sm:text-left">
               <Label className="text-xs font-mono text-gray-400 mb-1 block">Min PA</Label>
-              <Input
-                type="number"
-                min={0}
-                step={1}
-                value={minPA}
-                onChange={(e) => setMinPA(Number(e.target.value))}
-                className="bg-gray-800/50 border-gray-700/50 text-amber-100 w-full h-9"
-              />
+              <div className="flex justify-center sm:block">
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={minPA}
+                  onChange={(e) => setMinPA(Number(e.target.value))}
+                  className="bg-gray-800/50 border-gray-700/50 text-amber-100 w-full h-9"
+                />
+              </div>
             </div>
             
             {/* Stats Display removed per request */}
             
             {/* Links and Actions */}
-            <div className="w-full sm:w-auto">
+            <div className="w-full flex justify-center sm:justify-start sm:w-auto">
               <Button
                 onClick={() => { setConfirmTarget({ type: 'all' }); setConfirmOpen(true) }}
                 disabled={running || (batters.length === 0)}
-                variant="destructive"
-                className="gap-2 w-full sm:w-auto h-9"
+                variant="outline"
+                className="gap-2 w-full sm:w-auto h-9 max-w-[200px] sm:max-w-none rounded-md backdrop-blur-md
+                           !bg-gradient-to-r !from-red-900/30 !via-red-800/25 !to-red-900/30
+                           border border-red-500/30 hover:border-red-400/50
+                           text-red-200 hover:text-red-100
+                           hover:!from-red-800/35 hover:!via-red-700/30 hover:!to-red-800/35
+                           shadow-[0_0_0_1px_rgba(239,68,68,0.25),0_6px_16px_-4px_rgba(239,68,68,0.25)]
+                           focus-visible:ring-2 focus-visible:ring-red-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                 aria-label="Delete all player cards"
                 title="Delete all player cards"
               >
@@ -805,8 +882,16 @@ export default function GreenSeamDashboard() {
                 Delete All
               </Button>
             </div>
-            <div className="w-full sm:w-auto">
-              <Button asChild variant="outline" className="h-9">
+            <div className="w-full flex justify-center sm:justify-start sm:w-auto">
+              <Button
+                asChild
+                variant="outline"
+                className="h-9 w-full max-w-[200px] sm:max-w-none rounded-md backdrop-blur-md
+                           bg-black/40 hover:bg-amber-500/10
+                           border border-amber-500/30 hover:border-amber-400/50
+                           text-amber-100
+                           shadow-[0_0_0_1px_rgba(251,191,36,0.20),0_6px_16px_-4px_rgba(251,191,36,0.20)]"
+              >
                 <Link href="/privacy">Privacy Policy</Link>
               </Button>
             </div>
@@ -816,24 +901,24 @@ export default function GreenSeamDashboard() {
 
       {/* Previous dashboard stat cards */}
       {result?.ok && batters.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-6 sm:mb-10">
-          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
-            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center text-center">
-              <div className="mb-1.5 sm:mb-2 inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
-                <BarChart3 className="w-5 h-5 text-amber-300" />
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-6 sm:mb-10 px-2 sm:px-0">
+          <Card className="mx-auto w-full max-w-[180px] sm:max-w-none bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
+            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center">
+              <div className="mx-auto mb-2 sm:mb-3 flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
+                <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
               </div>
-              <p className="text-[10px] sm:text-sm text-gray-400 font-mono tracking-wide">ACTIVE BATTERS</p>
-              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-200 leading-tight">{filteredBatters.length}</p>
+              <p className="text-[11px] sm:text-sm text-gray-400 font-mono tracking-wide text-center w-full">ACTIVE BATTERS</p>
+              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-200 leading-none mt-1">{filteredBatters.length}</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
-            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center text-center">
-              <div className="mb-1.5 sm:mb-2 inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
-                <Activity className="w-5 h-5 text-amber-300" />
+          <Card className="mx-auto w-full max-w-[180px] sm:max-w-none bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
+            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center">
+              <div className="mx-auto mb-2 sm:mb-3 flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
+                <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
               </div>
-              <p className="text-[10px] sm:text-sm text-gray-400 font-mono tracking-wide">AVERAGE CONFIDENCE</p>
-              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-100 leading-tight">{
+              <p className="text-[11px] sm:text-sm text-gray-400 font-mono tracking-wide text-center w-full">AVG CONFIDENCE</p>
+              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-100 leading-none mt-1">{
                 (() => {
                   const arr: PlateAppearanceCanonical[] = (result?.data || []) as any
                   const avg = arr.reduce((s: number, p: any) => s + (p.confidence || 0), 0) / Math.max(1, arr.length)
@@ -843,25 +928,25 @@ export default function GreenSeamDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
-            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center text-center">
-              <div className="mb-1.5 sm:mb-2 inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
-                <Brain className="w-5 h-5 text-amber-300" />
+          <Card className="mx-auto w-full max-w-[180px] sm:max-w-none bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
+            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center">
+              <div className="mx-auto mb-2 sm:mb-3 flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
+                <Brain className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
               </div>
-              <p className="text-[10px] sm:text-sm text-gray-400 font-mono tracking-wide">AI INSIGHTS</p>
-              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-100 leading-tight">{
+              <p className="text-[11px] sm:text-sm text-gray-400 font-mono tracking-wide text-center w-full">AI INSIGHTS</p>
+              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-100 leading-none mt-1">{
                 filteredBatters.reduce((s, b) => s + (b.swing_mechanic ? 1 : 0) + (b.positional ? 1 : 0) + (b.opponent_pattern ? 1 : 0), 0)
               }</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
-            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center text-center">
-              <div className="mb-1.5 sm:mb-2 inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
-                <Zap className="w-5 h-5 text-amber-300" />
+          <Card className="mx-auto w-full max-w-[180px] sm:max-w-none bg-gradient-to-br from-gray-900/90 to-black/90 border-amber-500/20 backdrop-blur-xl hover:border-amber-400/40 shadow-2xl hover:shadow-amber-500/20 motion-safe:transition-transform motion-safe:duration-300 motion-safe:hover:-translate-y-0.5">
+            <CardContent className="p-3 sm:p-5 min-h-[96px] sm:min-h-[140px] flex flex-col items-center justify-center">
+              <div className="mx-auto mb-2 sm:mb-3 flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-500/15 border border-amber-500/30">
+                <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
               </div>
-              <p className="text-[10px] sm:text-sm text-gray-400 font-mono tracking-wide">TOTAL PAs</p>
-              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-100 leading-tight">{(result?.data || []).length}</p>
+              <p className="text-[11px] sm:text-sm text-gray-400 font-mono tracking-wide text-center w-full">TOTAL PAs</p>
+              <p className="text-xl sm:text-3xl font-mono font-bold text-amber-100 leading-none mt-1">{(result?.data || []).length}</p>
             </CardContent>
           </Card>
         </div>
@@ -869,81 +954,95 @@ export default function GreenSeamDashboard() {
 
         {/* Previous batter cards with insights */}
         {result?.ok && filteredBatters.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-2 sm:gap-4">
             {filteredBatters.map((batter, i) => (
               <Card
                 key={`${batter.name}-${i}`}
-                className="relative overflow-hidden bg-gradient-to-br from-gray-900/95 via-black/90 to-gray-900/95 backdrop-blur-xl border border-amber-500/20 hover:border-amber-400/40 transition-all duration-500 shadow-2xl hover:shadow-amber-500/25 hover:scale-[1.02] transform"
+                className="group relative overflow-hidden bg-gradient-to-br from-gray-900/95 via-black/90 to-gray-900/95 backdrop-blur-xl border border-amber-500/20 hover:border-amber-400/40 transition-all duration-300 shadow-xl hover:shadow-amber-500/20 hover:scale-[1.01] transform"
               >
-                <CardHeader className="pb-4 relative">
+                <CardHeader className="p-2 pb-1 sm:p-5 sm:pb-4 relative">
                   <div
-                    className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:cursor-default cursor-pointer"
+                    className="relative flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-3 sm:cursor-default cursor-pointer w-full"
                     onClick={() => setMobileExpand((s) => ({ ...s, [batter.key]: !s[batter.key] }))}
                     aria-expanded={!!mobileExpand[batter.key]}
                   >
-                    <div>
-                      <CardTitle className="text-lg sm:text-xl text-amber-100 font-mono font-bold mb-1 drop-shadow-lg">
+                    <div className="w-full text-center sm:text-left">
+                      <CardTitle className="text-base sm:text-xl text-amber-100 font-mono font-bold mb-1 drop-shadow-lg">
                         {batter.name}
                       </CardTitle>
-                      <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
+                      <div className="flex items-center justify-center sm:justify-start gap-2 text-[10px] text-gray-400 font-mono">
                         <span>{batter.totals.pas} PA</span>
                         <span>•</span>
                         <span>{batter.totals.pitchesSeen} Pitches</span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="flex items-center justify-end gap-2 mb-1">
+                    <div className="w-full text-center sm:w-auto sm:text-right">
+                      <div className="flex items-center justify-center sm:justify-end gap-2 mb-1">
                         <Button
                           size="icon"
                           variant="destructive"
-                          className="h-9 w-9 sm:h-8 sm:w-8"
+                          className="h-7 w-7 sm:h-8 sm:w-8"
                           aria-label={`Delete ${batter.name}`}
                           title={`Delete ${batter.name}`}
                           onClick={() => { setConfirmTarget({ type: 'batter', key: batter.key, name: batter.name }); setConfirmOpen(true) }}
                         >
-                          <Trash className="w-4 h-4" />
+                          <Trash className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </Button>
                         <Button
                           size="icon"
                           variant="outline"
-                          className="h-9 w-9 sm:h-8 sm:w-8"
+                          className="h-7 w-7 sm:h-8 sm:w-8"
                           aria-label={`Share ${batter.name}`}
                           title={`Share ${batter.name}`}
                           onClick={() => { void shareBatter({ name: batter.name }) }}
                         >
-                          <Share2 className="w-4 h-4" />
+                          <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </Button>
                       </div>
-                      <div className="text-xs text-gray-400 font-mono">CONTACT RATE</div>
-                      <div className="text-lg font-mono font-bold text-amber-300">
+                      <div className="text-[10px] text-gray-400 font-mono text-center sm:text-right">CONTACT RATE</div>
+                      <div className="text-base sm:text-lg font-mono font-bold text-amber-300 text-center sm:text-right">
                         {(batter.totals.contactRate * 100).toFixed(0)}%
                       </div>
+                      {/* Desktop shows inline details; no overlay button needed */}
                     </div>
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-4 relative">
+                <CardContent className="p-2 space-y-2 sm:p-5 sm:space-y-4 relative">
                   {/* Mobile compact overview */}
                   <div className="sm:hidden space-y-2">
-                    <div className="flex items-center justify-between text-[11px] font-mono text-gray-300">
-                      <span>{batter.totals.pas} PA</span>
-                      <span>Contact {(batter.totals.contactRate * 100).toFixed(0)}%</span>
-                      <span>K {(batter.totals.strikeoutRate * 100).toFixed(0)}%</span>
+                    <div className="grid grid-cols-3 gap-1">
+                      <div className="text-center p-1 bg-gray-800/40 border border-gray-700/50 rounded">
+                        <span className="block text-[9px] tracking-wide text-gray-400">PA</span>
+                        <span className="block text-xs font-mono font-bold text-amber-100">{batter.totals.pas}</span>
+                      </div>
+                      <div className="text-center p-1 bg-gray-800/40 border border-gray-700/50 rounded">
+                        <span className="block text-[9px] tracking-wide text-gray-400">Contact</span>
+                        <span className="block text-xs font-mono font-bold text-amber-100">{(batter.totals.contactRate * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="text-center p-1 bg-gray-800/40 border border-gray-700/50 rounded">
+                        <span className="block text-[9px] tracking-wide text-gray-400">K</span>
+                        <span className="block text-xs font-mono font-bold text-amber-100">{(batter.totals.strikeoutRate * 100).toFixed(0)}%</span>
+                      </div>
                     </div>
                     <Button
-                      variant="outline"
-                      className="w-full h-8 text-[11px] font-mono"
-                      onClick={() => setMobileExpand((s) => ({ ...s, [batter.key]: !s[batter.key] }))}
-                    >
-                      {mobileExpand[batter.key] ? 'Hide details' : 'View details'}
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openDetailOverlay(batter.key) }}
+                      className="w-full h-8 text-[11px] font-mono rounded-md
+                                 !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300
+                                 hover:!from-amber-200 hover:!via-yellow-100 hover:!to-amber-200
+                                 active:!from-amber-200 active:!to-amber-200
+                                 !text-black !font-semibold tracking-wide uppercase
+                                 border border-amber-400/60 shadow-[0_0_0_1px_rgba(251,191,36,0.25),0_6px_16px_-4px_rgba(251,191,36,0.35)]">
+                      {activeDetailKey === batter.key ? 'Hide details' : 'View details'}
                     </Button>
                   </div>
 
                   {/* Details: animated expand on mobile, always visible on desktop */}
                   <div
-                    className={`block overflow-hidden motion-safe:transition-all motion-safe:duration-300
-                               ${mobileExpand[batter.key] ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'}
-                               sm:max-h-none sm:opacity-100`}
+                    className={`block overflow-hidden motion-safe:transition-all motion-safe:duration-300 ${
+                      mobileExpand[batter.key] ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'
+                    } sm:max-h-none sm:opacity-100`}
                   >
                   {/* Key Rates */}
                   <div className="grid grid-cols-3 gap-2">
@@ -1118,6 +1217,191 @@ export default function GreenSeamDashboard() {
               </Card>
             ))}
           </div>
+      )}
+
+        {/* Full-screen mobile detail overlay */}
+        {isMobile && activeBatter && (
+          <>
+            {/* Backdrop */}
+            <div
+              className={`fixed inset-0 z-50 transition-opacity duration-300 ease-out ${overlayAnim === 'enter' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              onClick={closeDetailOverlay}
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-black/80 via-black/70 to-black/80 backdrop-blur-sm" />
+            </div>
+            {/* Sliding Panel */}
+            <div
+              className={`fixed inset-x-0 bottom-0 top-16 sm:top-20 z-50 transition-transform duration-300 ease-out ${overlayAnim === 'enter' ? 'translate-y-0' : 'translate-y-full'}`}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="mx-auto h-full max-w-screen-sm sm:max-w-screen-md px-3 sm:px-4">
+                <div className="h-full overflow-y-auto rounded-t-2xl border border-amber-500/20 bg-gradient-to-br from-gray-900/95 via-black/90 to-gray-900/95 shadow-2xl">
+                  {/* Header */}
+                  <div className="sticky top-0 z-10 flex items-center justify-between px-3 sm:px-4 py-3 backdrop-blur-md bg-black/40 border-b border-amber-500/20">
+                    <div className="text-base sm:text-lg font-mono font-bold text-amber-100">{activeBatter.name}</div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); closeDetailOverlay() }}
+                        className="h-8 px-3 text-xs font-mono rounded-md
+                                   bg-amber-500/15 hover:bg-amber-500/25
+                                   border border-amber-500/40 text-amber-100"
+                      >
+                        Hide details
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-amber-200"
+                        onClick={(e) => { e.stopPropagation(); closeDetailOverlay() }}
+                        aria-label="Close"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  {/* Body */}
+                  <div className="p-3 sm:p-4 space-y-4">
+                    {/* Quick stats */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center p-2 bg-gray-800/40 border border-gray-700/50 rounded">
+                        <span className="block text-[10px] tracking-wide text-gray-400">PA</span>
+                        <span className="block text-sm font-mono font-bold text-amber-100">{activeBatter.totals.pas}</span>
+                      </div>
+                      <div className="text-center p-2 bg-gray-800/40 border border-gray-700/50 rounded">
+                        <span className="block text-[10px] tracking-wide text-gray-400">Contact</span>
+                        <span className="block text-sm font-mono font-bold text-amber-100">{(activeBatter.totals.contactRate * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="text-center p-2 bg-gray-800/40 border border-gray-700/50 rounded">
+                        <span className="block text-[10px] tracking-wide text-gray-400">K</span>
+                        <span className="block text-sm font-mono font-bold text-amber-100">{(activeBatter.totals.strikeoutRate * 100).toFixed(0)}%</span>
+                      </div>
+                    </div>
+
+                    {/* Key Rates */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center p-3 bg-gray-800/50 border border-gray-700/50 rounded">
+                        <p className="text-lg font-mono font-bold text-amber-100">{(activeBatter.totals.strikeoutRate * 100).toFixed(0)}%</p>
+                        <p className="text-xs text-gray-400 font-mono">K RATE</p>
+                      </div>
+                      <div className="text-center p-3 bg-gray-800/50 border border-gray-700/50 rounded">
+                        <p className="text-lg font-mono font-bold text-amber-100">{(activeBatter.totals.walkRate * 100).toFixed(0)}%</p>
+                        <p className="text-xs text-gray-400 font-mono">BB RATE</p>
+                      </div>
+                      <div className="text-center p-3 bg-gray-800/50 border border-gray-700/50 rounded">
+                        <p className="text-lg font-mono font-bold text-amber-100">{activeBatter.breakdown.power.hr + activeBatter.breakdown.power.double + activeBatter.breakdown.power.triple}</p>
+                        <p className="text-xs text-gray-400 font-mono">XBH</p>
+                      </div>
+                    </div>
+
+                    {/* Results Breakdown */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-mono text-gray-400">RESULTS BREAKDOWN</p>
+                      <div className="grid grid-cols-4 gap-1 text-xs">
+                        {Object.entries(activeBatter.breakdown.results).map(([type, count]) => (
+                          <div key={type} className="text-center p-2 bg-gray-800/30 border border-gray-700/30 rounded">
+                            <div className="font-mono font-bold text-amber-100">{count as any}</div>
+                            <div className="text-gray-400 font-mono uppercase">{type}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Recent Form */}
+                    <div>
+                      <p className="text-xs font-mono mb-2 text-gray-400">RECENT FORM</p>
+                      <div className="flex gap-1">
+                        {activeBatter.recentForm.map((result, index) => (
+                          <div
+                            key={index}
+                            className={`w-6 h-6 rounded flex items-center justify-center text-xs font-mono font-bold transition-all duration-200 shadow-md ${
+                              result === 1
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
+                                : 'bg-red-900/30 text-red-400 border border-red-500/40'
+                            }`}
+                          >
+                            {result === 1 ? 'H' : 'O'}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <Separator className="bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
+
+                    {/* AI Recommendations */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Brain className="w-4 h-4 text-amber-400" />
+                        <p className="text-xs font-mono text-gray-400">COACHING INSIGHTS</p>
+                        <span className="text-xs font-mono text-amber-300 bg-amber-500/20 px-2 py-1 rounded border border-amber-500/30">{(activeBatter.recommendations_confidence * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="space-y-2">
+                        {!aiByName[activeBatter.key] ? (
+                          <div className="p-3 bg-gray-800/20 border border-gray-700/30 rounded text-xs font-mono text-gray-400 italic">Generating insights...</div>
+                        ) : (
+                          <>
+                            {!activeBatter.swing_mechanic && !activeBatter.positional ? (
+                              <div className="p-3 bg-gray-800/20 border border-gray-700/30 rounded text-xs font-mono text-gray-400">No clear, data-backed coaching insight.</div>
+                            ) : (
+                              <>
+                                {activeBatter.swing_mechanic && (
+                                  <div className="p-3 bg-gray-800/30 border border-gray-700/30 rounded text-xs font-mono text-gray-300 leading-relaxed">
+                                    <span className="text-[10px] uppercase tracking-wide text-amber-300/80 mr-2">Swing Mechanics</span>
+                                    {activeBatter.swing_mechanic}
+                                  </div>
+                                )}
+                                {activeBatter.positional && (
+                                  <div className="p-3 bg-gray-800/30 border border-gray-700/30 rounded text-xs font-mono text-gray-300 leading-relaxed">
+                                    <span className="text-[10px] uppercase tracking-wide text-amber-300/80 mr-2">Positional</span>
+                                    {activeBatter.positional}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Opponent Pattern */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-400" />
+                        <p className="text-xs font-mono text-gray-400">OPPONENT PATTERN</p>
+                        <span className="text-xs font-mono text-red-300 bg-red-500/20 px-2 py-1 rounded border border-red-500/30">{(activeBatter.recommendations_confidence * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="space-y-2">
+                        {!aiByName[activeBatter.key] ? (
+                          <div className="p-3 bg-red-900/10 border border-red-500/20 rounded text-xs font-mono text-red-200/70 italic">Analyzing for opponent exploitable trends...</div>
+                        ) : (
+                          <>
+                            {!activeBatter.opponent_pattern ? (
+                              <div className="p-3 bg-red-900/10 border border-red-500/20 rounded text-xs font-mono text-red-200/80">No clear, data-backed opponent pattern.</div>
+                            ) : (
+                              <div className="p-3 bg-red-900/10 border border-red-500/20 rounded text-xs font-mono text-red-200 leading-relaxed">{activeBatter.opponent_pattern}</div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action */}
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        className="flex-1 w-full gap-3 bg-amber-500/20 border-amber-500/40 text-amber-100 hover:bg-amber-500/30 hover:border-amber-400/60 font-mono text-sm px-4 py-3 transition-all duration-300 shadow-xl hover:shadow-amber-500/30 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg"
+                        onClick={() => { if (activeBatter) goFullAnalysis(activeBatter) }}
+                      >
+                        <TrendingUp className="w-5 h-5" />
+                        FULL ANALYSIS
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
         )}
 
         <div className="rounded-lg border border-amber-500/20 bg-black/50 p-4">

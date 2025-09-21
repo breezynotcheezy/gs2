@@ -155,3 +155,30 @@
 .nice-scroll::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, rgba(251,191,36,0.7), rgba(251,191,36,0.4));
 }
+
+/* Global main scrollbar (html/body): friendly, theme-matching */
+html, body {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(251, 191, 36, 0.35) rgba(17, 24, 39, 0.5); /* thumb, track */
+  scrollbar-gutter: stable both-edges; /* avoid layout shift when showing scrollbars */
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+html::-webkit-scrollbar-track, body::-webkit-scrollbar-track {
+  background: rgba(17, 24, 39, 0.5);
+  border-radius: 9999px;
+}
+html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(251,191,36,0.5), rgba(251,191,36,0.3));
+  border-radius: 9999px;
+  border: 1px solid rgba(251,191,36,0.35);
+  box-shadow: inset 0 0 6px rgba(0,0,0,0.2);
+}
+html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(251,191,36,0.75), rgba(251,191,36,0.45));
+}
+html::-webkit-scrollbar-corner, body::-webkit-scrollbar-corner {
+  background: transparent;
+}
