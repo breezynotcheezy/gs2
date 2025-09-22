@@ -868,18 +868,27 @@ export default function GreenSeamDashboard() {
                 onClick={() => { setConfirmTarget({ type: 'all' }); setConfirmOpen(true) }}
                 disabled={running || (batters.length === 0)}
                 variant="outline"
-                className="gap-2 w-full sm:w-auto h-9 max-w-[200px] sm:max-w-none rounded-md backdrop-blur-md
-                           !bg-gradient-to-r !from-red-900/30 !via-red-800/25 !to-red-900/30
-                           border border-red-500/30 hover:border-red-400/50
-                           text-red-200 hover:text-red-100
-                           hover:!from-red-800/35 hover:!via-red-700/30 hover:!to-red-800/35
-                           shadow-[0_0_0_1px_rgba(239,68,68,0.25),0_6px_16px_-4px_rgba(239,68,68,0.25)]
-                           focus-visible:ring-2 focus-visible:ring-red-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                className="gap-2 w-full sm:w-auto h-11 sm:h-9 max-w-[220px] sm:max-w-none rounded-md
+                           bg-gradient-to-r from-red-900 via-red-800 to-red-900 text-rose-50
+                           border border-red-700/40
+                           shadow-[0_0_0_1px_rgba(127,29,29,0.35),0_4px_14px_-6px_rgba(127,29,29,0.35)]
+                           hover:from-red-800 hover:via-red-700 hover:to-red-800
+                           active:from-red-950 active:via-red-900 active:to-red-950
+                           focus-visible:ring-2 focus-visible:ring-red-700/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                 aria-label="Delete all player cards"
                 title="Delete all player cards"
               >
                 <Trash className="w-4 h-4" />
                 Delete All
+              </Button>
+            </div>
+            <div className="w-full flex justify-center sm:justify-start sm:w-auto">
+              <Button asChild variant="outline" className="h-9 w-full max-w-[200px] sm:max-w-none rounded-md backdrop-blur-md
+                           bg-black/40 hover:bg-amber-500/10
+                           border border-amber-500/30 hover:border-amber-400/50
+                           text-amber-100
+                           shadow-[0_0_0_1px_rgba(251,191,36,0.20),0_6px_16px_-4px_rgba(251,191,36,0.20)]">
+                <Link href="/gc">Import from GameChanger</Link>
               </Button>
             </div>
             <div className="w-full flex justify-center sm:justify-start sm:w-auto">
