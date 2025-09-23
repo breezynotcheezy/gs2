@@ -767,13 +767,17 @@ export default function GreenSeamDashboard() {
   <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black">
     <main className="container mx-auto px-4 py-6">
       {/* Active Profile Badge / Prompt */}
-      <div className="w-full flex justify-center sm:justify-end mb-2">
+      <div className="w-full flex flex-wrap items-center justify-center sm:justify-end gap-2 mb-2">
         {currentProfileName ? (
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1">
             <span className="text-[11px] font-mono text-gray-400">Profile</span>
             <span className="text-[11px] font-mono text-amber-200">{currentProfileName}</span>
           </div>
         ) : null}
+        <Link href="/pro" className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-300/20 px-3 py-1 text-[11px] font-mono text-amber-200 hover:bg-amber-300/30">
+          <Zap className="w-3.5 h-3.5 text-amber-300" />
+          Upgrade to Pro
+        </Link>
       </div>
       {/* Delete Confirmation Dialog (glassomorphic) */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -962,10 +966,10 @@ export default function GreenSeamDashboard() {
                        border border-emerald-400/60
                        shadow-[0_0_0_1px_rgba(5,150,105,0.30),0_10px_25px_-5px_rgba(5,150,105,0.30)]
                        focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-black
-                       disabled:opacity-60"
+                       disabled:opacity-60 h-11 sm:h-10 sm:min-w-[240px]"
             disabled={running}
           >
-            <Link href="/gc" className="w-full h-full inline-flex items-center justify-center gap-2 min-w-0">
+            <Link href="/gc" className="w-full h-full inline-flex items-center justify-center gap-2 min-w-0 whitespace-nowrap">
               <UploadCloud className="w-4 h-4 shrink-0" />
               <span className="sm:hidden">Import GC</span>
               <span className="hidden sm:inline">Import from GameChanger</span>

@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, LayoutDashboard, History, Settings } from 'lucide-react'
+import { Home, LayoutDashboard, History, Settings, Star } from 'lucide-react'
 
 const items = [
   { href: '/app', label: 'App', icon: Home },
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/history', label: 'Profiles', icon: History },
+  { href: '/pro', label: 'Pro', icon: Star },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -17,7 +18,7 @@ export default function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-amber-500/20 backdrop-blur-xl
                     bg-gradient-to-t from-black/85 via-black/70 to-black/50">
       <div className="mx-auto max-w-3xl sm:max-w-5xl px-4">
-        <ul className="grid grid-cols-4 gap-2 py-3">
+        <ul className="grid grid-cols-5 gap-2 py-3">
           {items.map(({ href, label, icon: Icon }) => {
             const active = pathname === href
             return (

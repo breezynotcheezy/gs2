@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MessageCircle, Send, X, Eye, EyeOff, Paperclip, History, Loader2 } from "lucide-react"
+import { loadProfiles, getCurrentProfile, replaceSessionWithProfile, SESS_PROFILE_KEY } from '@/lib/profiles'
 import type { PlateAppearanceCanonical } from "@gs-src/core/canon/types"
 
 // Session schema used elsewhere in the app
@@ -65,6 +66,7 @@ export default function Chatbot() {
   // Composer attachment when user pastes text: always hide body and show a pill
   const [composeAttach, setComposeAttach] = useState<{ text: string; words: number; chars: number } | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [activeProfileName, setActiveProfileName] = useState<string>("")
 
 
   // Load current UI filter from sessionStorage (set by dashboard)
@@ -82,6 +84,42 @@ export default function Chatbot() {
       setFilterKeys([])
     }
   }, [open])
+
+  // Ensure session mirrors the active profile and track active profile name
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const s = loadProfiles()
+      const cur = getCurrentProfile(s)
+      const profName = cur?.name || ''
+      setActiveProfileName(profName)
+      const sessPid = sessionStorage.getItem(SESS_PROFILE_KEY || '')
+      if (cur && sessPid !== cur.id) {
+        // Mirror session to the active profile
+        replaceSessionWithProfile(cur.id)
+      }
+    } catch {}
+  }, [open])
+
+  // React to profile/session changes from other tabs/routes while the bot is open
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'gs:profiles:v1' || e.key === SESS_PROFILE_KEY) {
+        try {
+          const s = loadProfiles()
+          const cur = getCurrentProfile(s)
+          setActiveProfileName(cur?.name || '')
+          const sessPid = sessionStorage.getItem(SESS_PROFILE_KEY || '')
+          if (cur && sessPid !== cur.id) {
+            replaceSessionWithProfile(cur.id)
+          }
+        } catch {}
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   // Build indices by batter
   const byBatter = useMemo(() => {
@@ -116,6 +154,15 @@ export default function Chatbot() {
   }, [messages, open])
 
   const groundedAnswer = useCallback(async (q: string): Promise<string> => {
+    // Hard guard: always ensure session belongs to the current active profile
+    try {
+      const s = loadProfiles()
+      const cur = getCurrentProfile(s)
+      const sessPid = sessionStorage.getItem(SESS_PROFILE_KEY || '')
+      if (cur && sessPid !== cur.id) {
+        replaceSessionWithProfile(cur.id)
+      }
+    } catch {}
     const sessionNow = loadSession()
     // Build a fresh batter map from the latest session for this question
     const mapNow = (() => {
@@ -359,6 +406,11 @@ export default function Chatbot() {
                   <History className="w-4 h-4" />
                 </Button>
               </div>
+              {activeProfileName && (
+                <div className="mt-1 text-[10px] font-mono text-gray-400">
+                  Scoped to current profile: <span className="text-amber-200">{activeProfileName}</span>
+                </div>
+              )}
               {showHistory && (
                 <div className="mt-2 rounded-md border border-amber-500/20 bg-black/60 p-2 max-h-40 overflow-y-auto space-y-1">
                   {messages.filter(m => m.role === 'user').slice(-8).reverse().map((m) => (
