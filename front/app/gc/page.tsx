@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { AlertCircle, LogIn, UploadCloud, Users } from 'lucide-react'
+import { addPlaysToCurrentProfile } from '@/lib/profiles'
 
 // Types mirrored from dashboard for session storage
 export type PlateAppearanceCanonical = any
@@ -97,6 +98,7 @@ export default function GameChangerImportPage() {
       const data: PlateAppearanceCanonical[] = Array.isArray(j?.data) ? j.data : []
       const segs: string[] = Array.isArray(j?.segments) ? j.segments : []
       let added = 0
+      const appended: StoredPA[] = []
       for (let i = 0; i < data.length; i++) {
         const pa = data[i]
         const seg = (segs[i] || '').trim()
@@ -104,13 +106,16 @@ export default function GameChangerImportPage() {
         const cKey = canonKeyFromPa(pa)
         if (segKey && segSet.has(segKey)) continue
         if (cKey && cSet.has(cKey)) continue
-        prev.plays.push({ pa, seg, segKey, canonKey: cKey })
+        const item: StoredPA = { pa, seg, segKey, canonKey: cKey }
+        prev.plays.push(item)
+        appended.push(item)
         added++
         if (segKey) segSet.add(segKey)
         if (cKey) cSet.add(cKey)
       }
       saveSession(prev)
-      setStatus(`Imported ${added} plays from ${teamId}. Open Dashboard to view.`)
+      try { addPlaysToCurrentProfile(appended as any) } catch {}
+      setStatus(`Imported ${added} plays from ${teamId} and saved to current profile. Open Dashboard to view.`)
     } catch (e: any) { setStatus(String(e?.message || e)) }
     finally { setLoading(false) }
   }, [])

@@ -327,8 +327,11 @@ export default function Chatbot() {
 
   return (
     <>
-      {/* Toggle Button */}
-      <div className="fixed bottom-4 right-4 z-50">
+      {/* Toggle Button (raise above bottom nav) */}
+      <div
+        className="fixed right-4 z-50"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)' }}
+      >
         <Button
           onClick={() => setOpen((v) => !v)}
           className="h-12 w-12 rounded-full p-0
@@ -344,7 +347,10 @@ export default function Chatbot() {
 
       {/* Panel */}
       {open && (
-        <div className="fixed bottom-20 right-4 w-[92vw] max-w-sm z-50">
+        <div
+          className="fixed right-4 w-[92vw] max-w-sm z-50"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 180px)' }}
+        >
           <Card className="bg-gradient-to-br from-gray-900/95 via-black/90 to-gray-900/95 border border-amber-500/30 backdrop-blur-xl shadow-2xl">
             <CardHeader className="py-3 px-4">
               <div className="flex items-center justify-between">

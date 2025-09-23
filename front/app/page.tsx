@@ -20,7 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Upload, Trash, BarChart3, Activity, Brain, Zap, AlertTriangle, TrendingUp, Share2, Paperclip, X } from 'lucide-react'
+import { Upload, UploadCloud, Trash, BarChart3, Activity, Brain, Zap, AlertTriangle, TrendingUp, Share2, Paperclip, X } from 'lucide-react'
+import { loadProfiles, getCurrentProfile, createProfile, addPlaysToCurrentProfile, replaceSessionWithProfile, clearCurrentProfile, removeBatterFromCurrentProfileByKey } from '@/lib/profiles'
 import type { PlateAppearanceCanonical } from '@gs-src/core/canon/types'
 
 // Persistent session store for aggregated plays within the tab session
@@ -95,7 +96,7 @@ function saveSession(s: StoredSession) {
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(s)) } catch {}
 }
 
-function mergeExtractIntoSession(extract: any): { session: StoredSession; added: number } {
+function mergeExtractIntoSession(extract: any): { session: StoredSession; added: number; newPlays: StoredPA[] } {
   const prev = loadSession() || { version: 1 as const, plays: [] as StoredPA[] }
   const before = prev.plays.length
   const rawData: PlateAppearanceCanonical[] = Array.isArray(extract?.data) ? (extract.data as any) : []
@@ -116,11 +117,12 @@ function mergeExtractIntoSession(extract: any): { session: StoredSession; added:
   }
   const data: PlateAppearanceCanonical[] = pairs.map(p => p.pa)
   const segs: string[] = pairs.map(p => p.seg)
-  if (!data.length) return { session: prev, added: 0 }
+  if (!data.length) return { session: prev, added: 0, newPlays: [] }
 
   const segSet = new Set(prev.plays.map((p) => p.segKey))
   const cSet = new Set(prev.plays.map((p) => p.canonKey))
 
+  const appended: StoredPA[] = []
   for (let i = 0; i < data.length; i++) {
     const pa = data[i]
     const seg = segs[i] || ""
@@ -129,14 +131,16 @@ function mergeExtractIntoSession(extract: any): { session: StoredSession; added:
     const cKey = canonKeyFromPa(pa)
     if (segKey && segSet.has(segKey)) continue
     if (cKey && cSet.has(cKey)) continue
-    prev.plays.push({ pa, seg, segKey, canonKey: cKey })
+    const item = { pa, seg, segKey, canonKey: cKey } as StoredPA
+    prev.plays.push(item)
+    appended.push(item)
     if (segKey) segSet.add(segKey)
     if (cKey) cSet.add(cKey)
   }
   // helpers moved to module scope
 
   saveSession(prev)
-  return { session: prev, added: prev.plays.length - before }
+  return { session: prev, added: prev.plays.length - before, newPlays: appended }
 }
 
 export default function GreenSeamDashboard() {
@@ -147,6 +151,10 @@ export default function GreenSeamDashboard() {
   const [result, setResult] = useState<any>(null)
   const [resultFilter, setResultFilter] = useState<"all" | "so" | "bb" | "hr">("all")
   const [minPA, setMinPA] = useState<number>(0)
+  // Profile state
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileName, setProfileName] = useState('')
+  const [currentProfileName, setCurrentProfileName] = useState<string>('')
   type PasteChunk = { id: string; text: string; words: number; chars: number }
   const [pasteChunks, setPasteChunks] = useState<PasteChunk[]>([])
   const [pasteDraft, setPasteDraft] = useState<string>("")
@@ -158,6 +166,22 @@ export default function GreenSeamDashboard() {
     const words = t.split(/\s+/).filter(Boolean).length
     const chars = t.length
     setPasteChunks((arr) => [...arr, { id, text: t, words, chars }])
+  }, [])
+
+  // Listen for profile changes from other routes/tabs and update active name
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'gs:profiles:v1') {
+        try {
+          const s = loadProfiles()
+          const cur = getCurrentProfile(s)
+          setCurrentProfileName(cur?.name || '')
+        } catch {}
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
   }, [])
   const removeChunk = useCallback((id: string) => {
     setPasteChunks((arr) => arr.filter((c) => c.id !== id))
@@ -192,8 +216,15 @@ export default function GreenSeamDashboard() {
 
   // On mount, load any existing session so the dashboard reflects all accumulated plays
   useEffect(() => {
+    // If a profile is active, the profile effect will mirror session and load it.
+    try {
+      const store = loadProfiles()
+      const cur = getCurrentProfile(store)
+      if (cur) return
+    } catch {}
     const sess = loadSession()
     if (sess && Array.isArray(sess.plays) && sess.plays.length > 0) {
+      setAiByName({})
       setResult({ ok: true, data: sess.plays.map((p) => p.pa), segments: sess.plays.map((p) => p.seg) })
       setStatus(`Loaded session (${sess.plays.length} plays)`) // informational only
     }
@@ -207,6 +238,18 @@ export default function GreenSeamDashboard() {
 
   const runWithText = useCallback(async (finalText: string) => {
     if (!finalText) return
+    // Robust guard: verify active profile directly from storage (not from state)
+    let hasProfile = false
+    try {
+      const store = loadProfiles()
+      const cur = getCurrentProfile(store)
+      hasProfile = !!cur
+    } catch {}
+    if (!hasProfile) {
+      setProfileOpen(true)
+      setStatus('Please create/select a profile first (top-right).')
+      return
+    }
     try {
       setStatus("Submitting to server...")
       setRunning(true)
@@ -245,7 +288,9 @@ export default function GreenSeamDashboard() {
       let added = 0
       let total = 0
       if (Array.isArray(data?.data) && data.data.length > 0) {
-        const { session, added: a } = mergeExtractIntoSession(data)
+        const { session, added: a, newPlays } = mergeExtractIntoSession(data)
+        // Also persist into the current profile
+        try { addPlaysToCurrentProfile(newPlays as any) } catch {}
         added = a
         total = session.plays.length
         setResult({ ok: true, data: session.plays.map((p) => p.pa), segments: session.plays.map((p) => p.seg) })
@@ -517,6 +562,59 @@ export default function GreenSeamDashboard() {
     } catch {}
   }, [])
 
+  // On mount, ensure a current profile exists; prompt to create if missing
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      const store = loadProfiles()
+      const cur = getCurrentProfile(store)
+      if (!cur) {
+        setProfileOpen(true)
+      } else {
+        setCurrentProfileName(cur.name)
+        // Mirror session to profile immediately to avoid any stale data
+        replaceSessionWithProfile(cur.id)
+        const sess = loadSession()
+        if (sess && Array.isArray(sess.plays)) {
+          setAiByName({})
+          if (sess.plays.length > 0) {
+            setResult({ ok: true, data: sess.plays.map((p) => p.pa), segments: sess.plays.map((p) => p.seg) })
+            setStatus(`Loaded profile "${cur.name}" (${sess.plays.length} plays)`) // informational only
+          } else {
+            setResult(null)
+            setStatus(`Loaded profile "${cur.name}" (0 plays)`) // informational only
+          }
+        }
+      }
+    } catch {}
+  }, [])
+
+  // Whenever an active profile is available or changes, mirror session to that profile and load
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      const store = loadProfiles()
+      const cur = getCurrentProfile(store)
+      if (!cur) return
+      replaceSessionWithProfile(cur.id)
+      const sess = loadSession()
+      if (sess && Array.isArray(sess.plays)) {
+        setAiByName({})
+        setMobileExpand({})
+        setActiveDetailKey(null)
+        setOverlayAnim(null)
+        setMinPA(0)
+        setResultFilter('all')
+        if (sess.plays.length > 0) {
+          setResult({ ok: true, data: sess.plays.map((p) => p.pa), segments: sess.plays.map((p) => p.seg) })
+        } else {
+          setResult(null)
+        }
+        setStatus(`Loaded profile "${cur.name}" (${sess.plays.length} plays)`) // informational only
+      }
+    } catch {}
+  }, [currentProfileName])
+
   const openDetailOverlay = useCallback((key: string) => {
     try {
       setActiveDetailKey(key)
@@ -638,6 +736,8 @@ export default function GreenSeamDashboard() {
         saveSession(nextSess)
         setResult({ ok: true, data: remaining.map((p) => p.pa), segments: remaining.map((p) => p.seg) })
         setStatus(`Removed ${removed} plays for ${name}. Session total: ${remaining.length}.`)
+        // mirror into current profile
+        try { removeBatterFromCurrentProfileByKey(name) } catch {}
       } else {
         setStatus(`No plays found for ${name}.`)
       }
@@ -660,11 +760,21 @@ export default function GreenSeamDashboard() {
     setFile(null)
     setMinPA(0)
     setResultFilter("all")
+    try { clearCurrentProfile() } catch {}
   }, [])
 
   return (
   <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black">
     <main className="container mx-auto px-4 py-6">
+      {/* Active Profile Badge / Prompt */}
+      <div className="w-full flex justify-center sm:justify-end mb-2">
+        {currentProfileName ? (
+          <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1">
+            <span className="text-[11px] font-mono text-gray-400">Profile</span>
+            <span className="text-[11px] font-mono text-amber-200">{currentProfileName}</span>
+          </div>
+        ) : null}
+      </div>
       {/* Delete Confirmation Dialog (glassomorphic) */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent className="backdrop-blur-xl bg-gradient-to-br from-black/70 via-gray-900/70 to-black/70 border border-amber-500/20 text-amber-100">
@@ -696,6 +806,48 @@ export default function GreenSeamDashboard() {
               }}
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Profile Create Dialog */}
+      <AlertDialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <AlertDialogContent className="backdrop-blur-xl bg-gradient-to-br from-black/70 via-gray-900/70 to-black/70 border border-amber-500/20 text-amber-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono text-amber-200">Create a Profile</AlertDialogTitle>
+            <AlertDialogDescription className="text-xs font-mono text-gray-400">
+              Name this profile. All hitters you parse in this session will be saved here. You can manage profiles in History.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="prof-name" className="text-xs font-mono text-gray-400">Profile Name</Label>
+            <Input id="prof-name" value={profileName} onChange={(e) => setProfileName(e.target.value)} className="bg-black/50 border-amber-500/20 text-amber-100" placeholder="e.g., Varsity vs North 09/22" />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="font-mono !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300 !text-black border border-amber-400/50"
+              onClick={() => {
+                try {
+                  const p = createProfile((profileName || '').trim() || 'Untitled Profile')
+                  setCurrentProfileName(p.name)
+                  // Completely reset session and UI state for the new profile
+                  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ version: 1, plays: [] })) } catch {}
+                  replaceSessionWithProfile(p.id)
+                  setAiByName({})
+                  setMobileExpand({})
+                  setActiveDetailKey(null)
+                  setOverlayAnim(null)
+                  setMinPA(0)
+                  setResultFilter('all')
+                  setResult(null)
+                  setStatus('New profile created. Ready to ingest.')
+                } catch {}
+                setProfileOpen(false)
+              }}
+            >
+              Create
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -779,18 +931,18 @@ export default function GreenSeamDashboard() {
             )
           })()}
         </div>
-        {/* Hidden file input bound to the Upload button below */}
-        <Input id="file" type="file" accept=".txt,text/plain" className="hidden" onChange={onFileChange} />
+        {/* (File upload removed; using GameChanger import instead) */}
         <div className="mt-2 grid grid-cols-2 sm:flex sm:flex-row items-stretch sm:items-center gap-2">
           {/* Ingest Text */}
           <Button
             onClick={ingestPaste}
             disabled={running}
             variant="default"
-            className="w-full sm:w-auto gap-3 font-mono px-3 h-12 sm:h-10 transition-all duration-150 rounded-md
+            size="lg"
+            className="w-full sm:w-auto gap-3 font-mono transition-all duration-150 rounded-md
                        !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300
                        hover:!from-amber-200 hover:!via-yellow-100 hover:!to-amber-200 active:!from-amber-200 active:!to-amber-200
-                       !text-black !font-semibold tracking-wide uppercase
+                       !text-black !font-semibold tracking-wide uppercase text-[12px] sm:text-[13px]
                        border border-amber-400/50
                        shadow-[0_0_0_1px_rgba(251,191,36,0.30),0_10px_25px_-5px_rgba(251,191,36,0.35)]
                        focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-2 focus:ring-offset-black
@@ -798,17 +950,26 @@ export default function GreenSeamDashboard() {
           >
             {running ? "Processing..." : "INGEST TEXT"}
           </Button>
-          {/* Upload Data (standard theme) */}
+          {/* Import from GameChanger (prominent style) */}
           <Button
             asChild
-            variant="outline"
-            className="w-full sm:w-auto gap-2 font-mono px-3 h-12 sm:h-10 bg-black/50 border-amber-500/30 text-amber-100 hover:bg-amber-500/10 hover:border-amber-400/50"
+            variant="default"
+            size="lg"
+            className="w-full sm:w-auto gap-3 font-mono transition-all duration-150 rounded-md
+                       !bg-gradient-to-r !from-emerald-600 !via-emerald-500 !to-emerald-600
+                       hover:!from-emerald-500 hover:!via-emerald-400 hover:!to-emerald-500 active:!from-emerald-700 active:!to-emerald-700
+                       !text-black !font-semibold tracking-wide uppercase text-[12px] sm:text-[13px]
+                       border border-emerald-400/60
+                       shadow-[0_0_0_1px_rgba(5,150,105,0.30),0_10px_25px_-5px_rgba(5,150,105,0.30)]
+                       focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-black
+                       disabled:opacity-60"
             disabled={running}
           >
-            <Label htmlFor="file" className="flex items-center gap-2 cursor-pointer select-none">
-              <Upload className="w-4 h-4" />
-              Upload
-            </Label>
+            <Link href="/gc" className="w-full h-full inline-flex items-center justify-center gap-2 min-w-0">
+              <UploadCloud className="w-4 h-4 shrink-0" />
+              <span className="sm:hidden">Import GC</span>
+              <span className="hidden sm:inline">Import from GameChanger</span>
+            </Link>
           </Button>
           <Button
             type="button"
@@ -880,15 +1041,6 @@ export default function GreenSeamDashboard() {
               >
                 <Trash className="w-4 h-4" />
                 Delete All
-              </Button>
-            </div>
-            <div className="w-full flex justify-center sm:justify-start sm:w-auto">
-              <Button asChild variant="outline" className="h-9 w-full max-w-[200px] sm:max-w-none rounded-md backdrop-blur-md
-                           bg-black/40 hover:bg-amber-500/10
-                           border border-amber-500/30 hover:border-amber-400/50
-                           text-amber-100
-                           shadow-[0_0_0_1px_rgba(251,191,36,0.20),0_6px_16px_-4px_rgba(251,191,36,0.20)]">
-                <Link href="/gc">Import from GameChanger</Link>
               </Button>
             </div>
             <div className="w-full flex justify-center sm:justify-start sm:w-auto">
@@ -1034,17 +1186,19 @@ export default function GreenSeamDashboard() {
                         <span className="block text-xs font-mono font-bold text-amber-100">{(batter.totals.strikeoutRate * 100).toFixed(0)}%</span>
                       </div>
                     </div>
-                    <Button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); openDetailOverlay(batter.key) }}
-                      className="w-full h-8 text-[11px] font-mono rounded-md
-                                 !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300
-                                 hover:!from-amber-200 hover:!via-yellow-100 hover:!to-amber-200
-                                 active:!from-amber-200 active:!to-amber-200
-                                 !text-black !font-semibold tracking-wide uppercase
-                                 border border-amber-400/60 shadow-[0_0_0_1px_rgba(251,191,36,0.25),0_6px_16px_-4px_rgba(251,191,36,0.35)]">
-                      {activeDetailKey === batter.key ? 'Hide details' : 'View details'}
-                    </Button>
+                    {activeDetailKey !== batter.key && (
+                      <Button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openDetailOverlay(batter.key) }}
+                        className="w-full h-8 text-[11px] font-mono rounded-md
+                                   !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300
+                                   hover:!from-amber-200 hover:!via-yellow-100 hover:!to-amber-200
+                                   active:!from-amber-200 active:!to-amber-200
+                                   !text-black !font-semibold tracking-wide uppercase
+                                   border border-amber-400/60 shadow-[0_0_0_1px_rgba(251,191,36,0.25),0_6px_16px_-4px_rgba(251,191,36,0.35)]">
+                        View details
+                      </Button>
+                    )}
                   </div>
 
                   {/* Details: animated expand on mobile, always visible on desktop */}
@@ -1251,15 +1405,6 @@ export default function GreenSeamDashboard() {
                     <div className="text-base sm:text-lg font-mono font-bold text-amber-100">{activeBatter.name}</div>
                     <div className="flex items-center gap-2">
                       <Button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); closeDetailOverlay() }}
-                        className="h-8 px-3 text-xs font-mono rounded-md
-                                   bg-amber-500/15 hover:bg-amber-500/25
-                                   border border-amber-500/40 text-amber-100"
-                      >
-                        Hide details
-                      </Button>
-                      <Button
                         size="icon"
                         variant="ghost"
                         className="h-8 w-8 text-amber-200"
@@ -1413,10 +1558,7 @@ export default function GreenSeamDashboard() {
           </>
         )}
 
-        <div className="rounded-lg border border-amber-500/20 bg-black/50 p-4">
-          <h3 className="text-base font-mono font-semibold mb-2">Result</h3>
-          <pre className="bg-black/70 text-amber-100 p-3 rounded border border-amber-500/20 max-h-[70vh] overflow-auto whitespace-pre-wrap break-words">{output}</pre>
-        </div>
+        {null}
       </main>
     </div>
   )

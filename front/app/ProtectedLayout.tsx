@@ -13,6 +13,11 @@ const Chatbot = dynamic(
   { ssr: false }
 );
 
+const BottomNav = dynamic(
+  () => import('@/components/BottomNav'),
+  { ssr: false }
+);
+
 export default function ProtectedLayout({
   children,
 }: {
@@ -20,8 +25,11 @@ export default function ProtectedLayout({
 }) {
   return (
     <PasswordProtect>
-      {children}
-      <Chatbot />
+      <div className="pb-28">{children}</div>
+      <div className="relative z-50">
+        <Chatbot />
+      </div>
+      <BottomNav />
     </PasswordProtect>
   );
 }
