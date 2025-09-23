@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import Link from 'next/link'
 
 export default function SettingsPage() {
   return (
@@ -18,7 +19,9 @@ export default function SettingsPage() {
           <CardContent>
             <p className="text-sm text-gray-400 font-mono">We will add preferences for default filters, GameChanger connection, and notifications here.</p>
             <div className="mt-4">
-              <Button className="h-9 rounded-md bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 text-black font-semibold border border-amber-400/50">Upgrade to Pro</Button>
+              <Link href="/pro">
+                <Button className="h-9 rounded-md bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 text-black font-semibold border border-amber-400/50">Upgrade to Pro</Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

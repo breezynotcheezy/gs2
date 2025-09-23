@@ -251,6 +251,21 @@ export default function GreenSeamDashboard() {
       return
     }
     try {
+      // Usage gate: consume one ingestion for non-Pro users
+      try {
+        const u = await fetch('/api/usage/consume', { method: 'POST' })
+        const uj = await u.json().catch(() => ({}))
+        if (!uj?.ok) {
+          if (uj?.needAuth) {
+            setStatus('Please sign in to ingest.');
+            try { router.push('/login') } catch {}
+            return
+          }
+          const rem = typeof uj?.remaining === 'number' ? ` Remaining today: ${uj.remaining}.` : ''
+          setStatus(`Daily ingestion limit reached.${rem} Upgrade to Pro for unlimited.`)
+          return
+        }
+      } catch {}
       setStatus("Submitting to server...")
       setRunning(true)
       setOutput("(no output yet)")
@@ -345,6 +360,15 @@ export default function GreenSeamDashboard() {
       ...pasteChunks.map((c) => c.text),
       pasteDraft,
     ].map((s) => (s || "").trim()).filter(Boolean)
+    // Enforce max 2 chunks per ingestion for non-Pro users
+    try {
+      const me = await fetch('/api/me').then(r => r.json()).catch(() => ({ isPro: false }))
+      const isPro = !!me?.isPro
+      if (!isPro && pieces.length > 2) {
+        setStatus('Free tier allows up to 2 pasted text chunks per ingestion. Combine or upgrade to Pro.')
+        return
+      }
+    } catch {}
     const trimmed = pieces.join("\n\n").trim()
     if (!trimmed) {
       setStatus("Paste is empty. Please paste play-by-play text.")

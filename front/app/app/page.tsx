@@ -26,7 +26,7 @@ export default function AppHomePage() {
 
           {/* Primary CTA */}
           <div className="mt-8 flex items-center justify-center">
-            <Link href="/upgrade">
+            <Link href="/pro">
               <Button className="h-11 px-6 rounded-md bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 text-black font-semibold border border-amber-400/50">
                 Upgrade to Pro
               </Button>

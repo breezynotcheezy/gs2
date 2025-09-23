@@ -87,6 +87,21 @@ export default function GameChangerImportPage() {
   const importTeam = useCallback(async (teamId: string) => {
     try {
       setLoading(true)
+      // Usage gate: consume one ingestion for non-Pro users
+      try {
+        const u = await fetch('/api/usage/consume', { method: 'POST' })
+        const uj = await u.json().catch(() => ({}))
+        if (!uj?.ok) {
+          if (uj?.needAuth) {
+            setStatus('Please sign in to import. Redirecting to login...')
+            try { window.location.href = '/login' } catch {}
+            return
+          }
+          const rem = typeof uj?.remaining === 'number' ? ` Remaining today: ${uj.remaining}.` : ''
+          setStatus(`Daily ingestion limit reached.${rem} Upgrade to Pro for unlimited.`)
+          return
+        }
+      } catch {}
       setStatus('Importing...')
       const r = await fetch(`/api/gc/import?teamId=${encodeURIComponent(teamId)}`)
       const j = await r.json().catch(() => ({}))
