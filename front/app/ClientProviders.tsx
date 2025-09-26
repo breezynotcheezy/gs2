@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 import { Session } from 'next-auth'
 import { SessionProvider } from 'next-auth/react'
 import { ThemeProvider } from '../components/theme-provider'
+import UserMenu from '../components/auth/UserMenu'
+import Portal from '../components/Portal'
 
 export function ClientProviders({
   children,
@@ -33,6 +35,18 @@ export function ClientProviders({
       disableTransitionOnChange
     >
       <SessionProvider session={session}>
+        <Portal>
+          <div
+            className="fixed z-[10001]"
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+              right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
+              pointerEvents: 'auto',
+            }}
+          >
+            <UserMenu />
+          </div>
+        </Portal>
         {children}
       </SessionProvider>
     </ThemeProvider>

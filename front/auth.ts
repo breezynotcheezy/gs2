@@ -1,5 +1,5 @@
 import type { NextAuthOptions, DefaultSession } from "next-auth"
-import CredentialsProvider from "next-auth/providers/credentials"
+import GoogleProvider from "next-auth/providers/google"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import prisma from "@/lib/prisma"
 
@@ -16,36 +16,12 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   secret: process.env.NEXTAUTH_SECRET || 'your-secret-key',
   providers: [
-    CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        const email = (credentials?.email || "").toString().trim().toLowerCase()
-        const password = (credentials?.password || "").toString()
-        const allowedEmail = (process.env.AUTH_USER_EMAIL || "").toLowerCase()
-        const allowedPassword = process.env.AUTH_USER_PASSWORD || ""
-
-        if (!email || !password) return null
-        if (!allowedEmail || !allowedPassword) {
-          console.warn("[auth] AUTH_USER_EMAIL or AUTH_USER_PASSWORD not set; rejecting credentials.")
-          return null
-        }
-        if (email !== allowedEmail || password !== allowedPassword) return null
-
-        // Ensure a User exists for this email
-        const user = await prisma.user.upsert({
-          where: { email: allowedEmail },
-          update: {},
-          create: { email: allowedEmail, name: allowedEmail.split("@")[0] || "user" },
-        })
-        return { id: user.id, email: user.email || undefined, name: user.name || undefined }
-      },
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
     }),
   ],
-  pages: { signIn: "/login" },
+  pages: {},
   callbacks: {
     async session({ session, token }) {
       if (session.user) {

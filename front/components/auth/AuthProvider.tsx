@@ -3,7 +3,7 @@
 import { Session } from 'next-auth';
 import { SessionProvider } from 'next-auth/react';
 import { ReactNode } from 'react';
-import SignOutButton from './SignOutButton';
+import UserMenu from './UserMenu';
 
 export default function AuthProvider({
   children,
@@ -15,7 +15,7 @@ export default function AuthProvider({
   return (
     <SessionProvider session={session}>
       <div className="fixed top-4 right-4 z-50">
-        {session?.user ? <SignOutButton /> : null}
+        <UserMenu />
       </div>
       {children}
     </SessionProvider>

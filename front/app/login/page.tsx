@@ -8,7 +8,7 @@ export default function LoginPage() {
     <div className="min-h-[60vh] flex items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-        <p className="text-sm text-muted-foreground">Enter your email and password to sign in.</p>
+        <p className="text-sm text-muted-foreground">Continue with your Google account.</p>
         <LoginForm />
       </div>
     </div>

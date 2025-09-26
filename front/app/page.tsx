@@ -1,7 +1,9 @@
- 'use client'
+"use client"
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from 'next/link'
+import { cn } from "@/lib/utils"
+
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Upload, UploadCloud, Trash, BarChart3, Activity, Brain, Zap, AlertTriangle, TrendingUp, Share2, Paperclip, X } from 'lucide-react'
+import { Upload, Trash, BarChart3, Activity, Brain, Zap, AlertTriangle, TrendingUp, Share2, Paperclip, X } from 'lucide-react'
 import { loadProfiles, getCurrentProfile, createProfile, addPlaysToCurrentProfile, replaceSessionWithProfile, clearCurrentProfile, removeBatterFromCurrentProfileByKey } from '@/lib/profiles'
 import type { PlateAppearanceCanonical } from '@gs-src/core/canon/types'
 
@@ -790,19 +792,22 @@ export default function GreenSeamDashboard() {
   return (
   <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black">
     <main className="container mx-auto px-4 py-6">
-      {/* Active Profile Badge / Prompt */}
-      <div className="w-full flex flex-wrap items-center justify-center sm:justify-end gap-2 mb-2">
-        {currentProfileName ? (
-          <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1">
-            <span className="text-[11px] font-mono text-gray-400">Profile</span>
-            <span className="text-[11px] font-mono text-amber-200">{currentProfileName}</span>
-          </div>
-        ) : null}
-        <Link href="/pro" className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-300/20 px-3 py-1 text-[11px] font-mono text-amber-200 hover:bg-amber-300/30">
-          <Zap className="w-3.5 h-3.5 text-amber-300" />
-          Upgrade to Pro
-        </Link>
+      {/* Top header: profile + pro (avatar is globally rendered at top-right) */}
+      <div className="w-full flex items-center justify-end mb-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {currentProfileName ? (
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1">
+              <span className="text-[11px] font-mono text-gray-400">Profile</span>
+              <span className="text-[11px] font-mono text-amber-200">{currentProfileName}</span>
+            </div>
+          ) : null}
+          <Link href="/pro" className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-300/20 px-3 py-1 text-[11px] font-mono text-amber-200 hover:bg-amber-300/30">
+            <Zap className="w-3.5 h-3.5 text-amber-300" />
+            Upgrade to Pro
+          </Link>
+        </div>
       </div>
+      
       {/* Delete Confirmation Dialog (glassomorphic) */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent className="backdrop-blur-xl bg-gradient-to-br from-black/70 via-gray-900/70 to-black/70 border border-amber-500/20 text-amber-100">
@@ -959,7 +964,7 @@ export default function GreenSeamDashboard() {
             )
           })()}
         </div>
-        {/* (File upload removed; using GameChanger import instead) */}
+        
         <div className="mt-2 grid grid-cols-2 sm:flex sm:flex-row items-stretch sm:items-center gap-2">
           {/* Ingest Text */}
           <Button
@@ -977,27 +982,6 @@ export default function GreenSeamDashboard() {
                        disabled:opacity-60"
           >
             {running ? "Processing..." : "INGEST TEXT"}
-          </Button>
-          {/* Import from GameChanger (prominent style) */}
-          <Button
-            asChild
-            variant="default"
-            size="lg"
-            className="w-full sm:w-auto gap-3 font-mono transition-all duration-150 rounded-md
-                       !bg-gradient-to-r !from-emerald-600 !via-emerald-500 !to-emerald-600
-                       hover:!from-emerald-500 hover:!via-emerald-400 hover:!to-emerald-500 active:!from-emerald-700 active:!to-emerald-700
-                       !text-black !font-semibold tracking-wide uppercase text-[12px] sm:text-[13px]
-                       border border-emerald-400/60
-                       shadow-[0_0_0_1px_rgba(5,150,105,0.30),0_10px_25px_-5px_rgba(5,150,105,0.30)]
-                       focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-black
-                       disabled:opacity-60 h-11 sm:h-10 sm:min-w-[240px]"
-            disabled={running}
-          >
-            <Link href="/gc" className="w-full h-full inline-flex items-center justify-center gap-2 min-w-0 whitespace-nowrap">
-              <UploadCloud className="w-4 h-4 shrink-0" />
-              <span className="sm:hidden">Import GC</span>
-              <span className="hidden sm:inline">Import from GameChanger</span>
-            </Link>
           </Button>
           <Button
             type="button"

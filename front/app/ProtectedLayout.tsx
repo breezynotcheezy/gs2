@@ -2,19 +2,20 @@
 
 import { ReactNode } from 'react';
 import dynamic from 'next/dynamic';
+import { usePathname } from 'next/navigation';
 
 const PasswordProtect = dynamic(
-  () => import('@/components/PasswordProtect'),
+  () => import('../components/PasswordProtect'),
   { ssr: false }
 );
 
 const Chatbot = dynamic(
-  () => import('@/components/Chatbot'),
+  () => import('../components/Chatbot'),
   { ssr: false }
 );
 
 const BottomNav = dynamic(
-  () => import('@/components/BottomNav'),
+  () => import('../components/BottomNav'),
   { ssr: false }
 );
 
@@ -23,13 +24,17 @@ export default function ProtectedLayout({
 }: {
   children: ReactNode;
 }) {
+  const pathname = usePathname();
+  const isPro = pathname?.startsWith('/pro');
   return (
     <PasswordProtect>
-      <div className="pb-28">{children}</div>
-      <div className="relative z-50">
+      <div className={`pb-28 ${isPro ? 'lg:pb-0' : ''}`}>{children}</div>
+      <div className={'relative z-50'}>
         <Chatbot />
       </div>
-      <BottomNav />
+      <div>
+        <BottomNav />
+      </div>
     </PasswordProtect>
   );
 }
