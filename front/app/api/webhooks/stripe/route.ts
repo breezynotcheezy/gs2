@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
-import { stripe } from '@/lib/stripe';
+import { stripe } from '@/lib/stripe/server';
 import { headers } from 'next/headers';
 
 export async function POST(request: Request) {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return new NextResponse('Stripe not configured (missing STRIPE_SECRET_KEY)', { status: 500 });
+  }
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    return new NextResponse('Stripe not configured (missing STRIPE_WEBHOOK_SECRET)', { status: 500 });
+  }
+
   const body = await request.text();
-  const signature = headers().get('stripe-signature') as string;
+  const hdrs = await headers();
+  const signature = hdrs.get('stripe-signature') || '';
 
   let event;
   
@@ -12,7 +20,7 @@ export async function POST(request: Request) {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET || ''
+      process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err: any) {
     console.error(`Webhook signature verification failed: ${err.message}`);

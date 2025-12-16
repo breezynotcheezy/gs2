@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
-import { stripe } from '@/lib/stripe';
+import { stripe } from '@/lib/stripe/server';
 
 export async function POST() {
   if (!process.env.NEXT_PUBLIC_APP_URL) {
     return new NextResponse('Server error: APP_URL not configured', { status: 500 });
+  }
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return NextResponse.json({ error: 'Stripe not configured (missing STRIPE_SECRET_KEY)' }, { status: 500 });
   }
 
   try {
@@ -34,6 +37,6 @@ export async function POST() {
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error('Error creating checkout session:', error);
-    return new NextResponse('Error creating checkout session', { status: 500 });
+    return NextResponse.json({ error: 'Error creating checkout session' }, { status: 500 });
   }
 }

@@ -26,7 +26,6 @@ export const metadata: Metadata = {
     icon: '/placeholder-logo.svg',
   },
   manifest: '/manifest.json',
-  themeColor: '#111827',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -36,6 +35,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport = {
+  themeColor: '#111827',
   width: 'device-width',
   initialScale: 1,
 }
