@@ -7,9 +7,6 @@ const __dirname = path.dirname(__filename);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -18,31 +15,11 @@ const nextConfig = {
   },
   outputFileTracingRoot: path.join(__dirname, '..'),
   experimental: {},
+  // Enable Turbopack (Next 16 default) and silence mixed webpack/turbopack error
+  turbopack: {},
   distDir: '.next',
   // Avoid unexpected 404s due to slash mismatches in hosting environments
   trailingSlash: false,
-  webpack: (config, { isServer }) => {
-    // Aliases for import resolution
-    // '@/*' -> front/* (components, app, lib, etc.)
-    // '@gs-src/*' -> repo root src/* (server utilities shared to frontend)
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@': __dirname,
-      '@gs-src': path.join(__dirname, '..', 'src'),
-    };
-
-    // Handle Node.js modules that shouldn't be bundled
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        path: false,
-        os: false,
-      };
-    }
-
-    return config;
-  },
   pageExtensions: ['tsx', 'ts', 'jsx', 'js', 'mdx'],
   async headers() {
     return [
