@@ -15,11 +15,19 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
   session: { strategy: "jwt" },
   secret: process.env.NEXTAUTH_SECRET || 'your-secret-key',
+  trustHost: true,
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-    }),
+    (() => {
+      const clientId = process.env.GOOGLE_CLIENT_ID
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+      if (!clientId || !clientSecret) {
+        throw new Error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET. Set these in your environment (Vercel Project → Environment Variables).")
+      }
+      return GoogleProvider({
+        clientId,
+        clientSecret,
+      })
+    })(),
   ],
   pages: {},
   callbacks: {
