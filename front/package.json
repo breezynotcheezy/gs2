@@ -7,7 +7,7 @@
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
-    "vercel-build": "prisma migrate deploy && next build --turbopack",
+    "vercel-build": "node -e \"try{const u=new URL(process.env.DIRECT_URL||'');console.log('Prisma DIRECT_URL host:',u.hostname+':' + (u.port||'(default)'));}catch(e){console.log('Prisma DIRECT_URL not set or unparsable');} try{const u=new URL(process.env.DATABASE_URL||'');console.log('Prisma DATABASE_URL host:',u.hostname+':' + (u.port||'(default)'));}catch(e){console.log('Prisma DATABASE_URL not set or unparsable');}\" && (prisma migrate deploy || (echo 'Falling back to pooled URL for migrate' && DIRECT_URL=\"$DATABASE_URL\" prisma migrate deploy)) && next build --turbopack",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:deploy": "prisma migrate deploy",
