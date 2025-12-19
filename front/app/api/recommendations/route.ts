@@ -49,6 +49,11 @@ export async function POST(req: Request) {
       JSON.stringify(segments, null, 2),
     ].join("\n\n");
 
+    // If no API key configured, short-circuit with empty guidance to avoid 500s
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json({ ok: true, swing_mechanic: "", positional: "", opponent_pattern: "", confidence: 0 });
+    }
+
     const raw = await completeJSON({
       model,
       system,
@@ -78,8 +83,14 @@ export async function POST(req: Request) {
     const opponent = sanitize(parsed?.opponent_pattern);
     const conf: number = Math.max(0, Math.min(1, Number(parsed?.confidence ?? 0.75)));
 
+    // If parsing yielded nothing meaningful, degrade gracefully
+    if (!swing && !positional && !opponent) {
+      return NextResponse.json({ ok: true, swing_mechanic: "", positional: "", opponent_pattern: "", confidence: 0 });
+    }
+
     return NextResponse.json({ ok: true, swing_mechanic: swing, positional, opponent_pattern: opponent, confidence: conf });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
+    // Graceful fallback to avoid noisy 500s in UI; caller already handles empty strings
+    return NextResponse.json({ ok: true, swing_mechanic: "", positional: "", opponent_pattern: "", confidence: 0 });
   }
 }
