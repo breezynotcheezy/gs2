@@ -16,16 +16,16 @@ export async function GET() {
     const session = await getServerSession(authOptions)
     const userId = (session as any)?.user?.id as string | undefined
     if (!userId) {
-      return NextResponse.json({ ok: true, signedIn: false, isPro: false, remainingIngestions: 0 })
+      return NextResponse.json({ ok: true, signedIn: false, isPro: false, remainingIngestions: 0, usedToday: 0, cap: 10 })
     }
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { isPro: true } })
     const isPro = !!user?.isPro
-    if (isPro) return NextResponse.json({ ok: true, signedIn: true, isPro, remainingIngestions: Infinity })
+    if (isPro) return NextResponse.json({ ok: true, signedIn: true, isPro, remainingIngestions: null, usedToday: null, cap: null })
     const day = todayKey()
     const usage = await prisma.dailyUsage.findUnique({ where: { userId_day: { userId, day } } })
     const used = usage?.ingestions || 0
-    const cap = 3
-    return NextResponse.json({ ok: true, signedIn: true, isPro, remainingIngestions: Math.max(0, cap - used) })
+    const cap = 10
+    return NextResponse.json({ ok: true, signedIn: true, isPro, remainingIngestions: Math.max(0, cap - used), usedToday: used, cap })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 })
   }
