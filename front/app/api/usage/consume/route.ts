@@ -20,9 +20,9 @@ export async function POST() {
     }
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { isPro: true } })
     const isPro = !!user?.isPro
-    if (isPro) return NextResponse.json({ ok: true, isPro, remaining: Infinity })
+    if (isPro) return NextResponse.json({ ok: true, isPro, remaining: null })
 
-    const cap = 3
+    const cap = 10
     const day = todayKey()
     const usage = await prisma.dailyUsage.upsert({
       where: { userId_day: { userId, day } },
