@@ -15,7 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { loadProfiles, getCurrentProfile, createProfile, addPlaysToCurrentProfile, replaceSessionWithProfile, clearCurrentProfile, removeBatterFromCurrentProfileByKey } from '@/lib/profiles'
+import { loadProfiles, getCurrentProfile, createProfile, addPlaysToCurrentProfile, replaceSessionWithProfile, clearCurrentProfile, removeBatterFromCurrentProfileByKey, saveProfiles } from '@/lib/profiles'
 import type { PlateAppearanceCanonical } from '@gs-src/core/canon/types'
 
 import HeaderBar from '@/components/home/HeaderBar'
@@ -229,6 +229,40 @@ export default function GreenSeamDashboard() {
       setResult({ ok: true, data: sess.plays.map((p) => p.pa), segments: sess.plays.map((p) => p.seg) })
       setStatus(`Loaded session (${sess.plays.length} plays)`) // informational only
     }
+  }, [])
+
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      const sync = async () => {
+        try {
+          const r = await fetch('/api/profiles')
+          const j = await r.json().catch(() => ({}))
+          if (r.ok && Array.isArray(j?.profiles)) {
+            const srv = j.profiles
+            const mapped = srv.map((p: any) => ({ id: String(p.id), name: String(p.name || 'Untitled'), createdAt: (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()), plays: Array.isArray(p.plays) ? p.plays : [] }))
+            const next = { version: 1 as const, currentId: mapped[0]?.id || null, profiles: mapped }
+            saveProfiles(next)
+            if (next.currentId) {
+              setCurrentProfileName(mapped[0]?.name || '')
+              replaceSessionWithProfile(next.currentId)
+              const sess = loadSession()
+              if (sess && Array.isArray(sess.plays)) {
+                setAiByName({})
+                if (sess.plays.length > 0) {
+                  setResult({ ok: true, data: sess.plays.map((p) => p.pa), segments: sess.plays.map((p) => p.seg) })
+                  setStatus(`Loaded profile "${mapped[0]?.name || ''}" (${sess.plays.length} plays)`) // informational only
+                } else {
+                  setResult(null)
+                  setStatus(`Loaded profile "${mapped[0]?.name || ''}" (0 plays)`) // informational only
+                }
+              }
+            }
+          }
+        } catch {}
+      }
+      void sync()
+    } catch {}
   }, [])
 
   const readTextFromFile = useCallback(async (f: File): Promise<string> => {
@@ -849,19 +883,32 @@ export default function GreenSeamDashboard() {
               className="font-mono !bg-gradient-to-r !from-amber-300 !via-yellow-200 !to-amber-300 !text-black border border-amber-400/50"
               onClick={() => {
                 try {
-                  const p = createProfile((profileName || '').trim() || 'Untitled Profile')
-                  setCurrentProfileName(p.name)
-                  // Completely reset session and UI state for the new profile
-                  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ version: 1, plays: [] })) } catch {}
-                  replaceSessionWithProfile(p.id)
-                  setAiByName({})
-                  setMobileExpand({})
-                  setActiveDetailKey(null)
-                  setOverlayAnim(null)
-                  setMinPA(0)
-                  setResultFilter('all')
-                  setResult(null)
-                  setStatus('New profile created. Ready to ingest.')
+                  const doCreate = async () => {
+                    try {
+                      const me = await fetch('/api/me').then(r => r.json()).catch(() => ({ isPro: false }))
+                      const isPro = !!me?.isPro
+                      if (!isPro) {
+                        const s = loadProfiles()
+                        if (Array.isArray(s?.profiles) && s.profiles.length >= 5) {
+                          setStatus('Profile limit reached (5 for free users). Upgrade to Pro for unlimited.')
+                          return
+                        }
+                      }
+                      const p = createProfile((profileName || '').trim() || 'Untitled Profile')
+                      setCurrentProfileName(p.name)
+                      try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ version: 1, plays: [] })) } catch {}
+                      replaceSessionWithProfile(p.id)
+                      setAiByName({})
+                      setMobileExpand({})
+                      setActiveDetailKey(null)
+                      setOverlayAnim(null)
+                      setMinPA(0)
+                      setResultFilter('all')
+                      setResult(null)
+                      setStatus('New profile created. Ready to ingest.')
+                    } catch {}
+                  }
+                  void doCreate()
                 } catch {}
                 setProfileOpen(false)
               }}

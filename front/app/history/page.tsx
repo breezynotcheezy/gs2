@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { loadProfiles, getCurrentProfile, createProfile, deleteProfile, setCurrentProfile, replaceSessionWithProfile, type Profile } from '@/lib/profiles'
+import { loadProfiles, saveProfiles, getCurrentProfile, createProfile, deleteProfile, setCurrentProfile, replaceSessionWithProfile, type Profile } from '@/lib/profiles'
 import { Trash, CheckCircle2, ArrowRight, Star } from 'lucide-react'
 
 export default function ProfilesHistoryPage() {
@@ -23,6 +23,24 @@ export default function ProfilesHistoryPage() {
   }
 
   useEffect(() => { refresh() }, [storeVersion])
+
+  useEffect(() => {
+    const sync = async () => {
+      try {
+        const s = loadProfiles()
+        if (Array.isArray(s?.profiles) && s.profiles.length > 0) return
+        const r = await fetch('/api/profiles')
+        const j = await r.json().catch(() => ({}))
+        if (r.ok && Array.isArray(j?.profiles)) {
+          const mapped = j.profiles.map((p: any) => ({ id: String(p.id), name: String(p.name || 'Untitled'), createdAt: (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()), plays: Array.isArray(p.plays) ? p.plays : [] }))
+          const next = { version: 1 as const, currentId: mapped[0]?.id || null, profiles: mapped }
+          saveProfiles(next)
+          setStoreVersion(v => v + 1)
+        }
+      } catch {}
+    }
+    void sync()
+  }, [])
 
   const current = useMemo(() => getCurrentProfile(loadProfiles()) || null, [storeVersion])
 
@@ -48,9 +66,23 @@ export default function ProfilesHistoryPage() {
               <div className="flex sm:justify-end">
                 <Button
                   onClick={() => {
-                    const p = createProfile((newName || '').trim() || 'Untitled Profile')
-                    setNewName('')
-                    setStoreVersion(v => v + 1)
+                    const doCreate = async () => {
+                      try {
+                        const me = await fetch('/api/me').then(r => r.json()).catch(() => ({ isPro: false }))
+                        const isPro = !!me?.isPro
+                        if (!isPro) {
+                          const s = loadProfiles()
+                          if (Array.isArray(s?.profiles) && s.profiles.length >= 5) {
+                            alert('Profile limit reached (5 for free users). Upgrade to Pro for unlimited.')
+                            return
+                          }
+                        }
+                        createProfile((newName || '').trim() || 'Untitled Profile')
+                        setNewName('')
+                        setStoreVersion(v => v + 1)
+                      } catch {}
+                    }
+                    void doCreate()
                   }}
                   className="h-10 px-5 rounded-md bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 text-black font-semibold border border-amber-400/50"
                 >

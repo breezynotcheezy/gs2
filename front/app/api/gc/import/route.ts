@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/auth'
+import prisma from '@/lib/prisma'
 
 // Mock importer that returns the same shape as /api/extract: { ok, data, segments }
 export async function GET(req: Request) {
   try {
+    const session = await getServerSession(authOptions)
+    const userId = (session as any)?.user?.id as string | undefined
+    if (!userId) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     const jar = await cookies()
     const sess = jar.get('gc_session')?.value
     if (!sess) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
@@ -31,6 +37,27 @@ export async function GET(req: Request) {
     } as const
 
     const rows = (sample as any)[teamId] || []
+    // Enforce and increment daily ingestion usage for non-Pro users
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { isPro: true } })
+    const isPro = !!u?.isPro
+    if (!isPro) {
+      const cap = 10
+      const d = new Date()
+      const day = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+      const usage = await prisma.dailyUsage.upsert({
+        where: { userId_day: { userId, day } },
+        create: { userId, day, ingestions: 0 },
+        update: {},
+      })
+      if (usage.ingestions >= cap) {
+        return NextResponse.json({ ok: false, error: 'Daily ingestion limit reached', remaining: 0 }, { status: 429 })
+      }
+      await prisma.dailyUsage.update({
+        where: { userId_day: { userId, day } },
+        data: { ingestions: { increment: 1 } },
+      })
+    }
+
     const data = rows.map((r: any) => r.pa)
     const segments = rows.map((r: any) => r.seg)
 

@@ -5,6 +5,9 @@ import dotenv from "dotenv";
 import { createHash } from "node:crypto";
 import { canonicalizeGameText } from "@gs-src/core/canon/game_canonicalizer";
 import type { GameContext } from "@gs-src/core/canon/types";
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/auth'
+import prisma from '@/lib/prisma'
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,12 +45,12 @@ function setCached(key: string, value: any) {
     // evict oldest
     let oldestKey: string | undefined;
     let oldestTs = Infinity;
-    for (const [k, v] of cache.entries()) {
+    cache.forEach((v, k) => {
       if (v.ts < oldestTs) {
         oldestTs = v.ts;
         oldestKey = k;
       }
-    }
+    })
     if (oldestKey) cache.delete(oldestKey);
   }
   cache.set(key, { key, value, ts: Date.now() });
@@ -56,6 +59,12 @@ function setCached(key: string, value: any) {
 export async function POST(req: NextRequest) {
   try {
     loadEnv();
+
+    const session = await getServerSession(authOptions)
+    const userId = (session as any)?.user?.id as string | undefined
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await req.json().catch(() => ({} as any));
     let text: string = body?.text ?? "";
@@ -83,6 +92,26 @@ export async function POST(req: NextRequest) {
 
     if (!text || typeof text !== "string") {
       return NextResponse.json({ ok: false, error: "text required" }, { status: 400 });
+    }
+
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { isPro: true } })
+    const isPro = !!u?.isPro
+    if (!isPro) {
+      const cap = 10
+      const d = new Date()
+      const day = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+      await prisma.dailyUsage.upsert({
+        where: { userId_day: { userId, day } },
+        create: { userId, day, ingestions: 0 },
+        update: {},
+      })
+      const updated = await prisma.dailyUsage.updateMany({
+        where: { userId, day, ingestions: { lt: cap } },
+        data: { ingestions: { increment: 1 } },
+      })
+      if (!updated || (updated as any).count === 0) {
+        return NextResponse.json({ ok: false, error: 'Daily ingestion limit reached', remaining: 0 }, { status: 429 })
+      }
     }
 
     const effectiveSegMode: "det" | "llm" | "hybrid" = deterministic ? "det" : segMode;

@@ -59,6 +59,21 @@ export default function ExtractPage() {
         return
       }
 
+      // Usage gate: preflight check for non-Pro users
+      try {
+        const u = await fetch('/api/usage/consume', { method: 'POST' })
+        const uj = await u.json().catch(() => ({}))
+        if (!uj?.ok) {
+          if (uj?.needAuth) {
+            setStatus('Please sign in to ingest.')
+            return
+          }
+          const rem = typeof uj?.remaining === 'number' ? ` Remaining today: ${uj.remaining}.` : ''
+          setStatus(`Daily ingestion limit reached.${rem} Upgrade to Pro for unlimited.`)
+          return
+        }
+      } catch {}
+
       setStatus("Submitting to server...")
       const body = {
         text: finalText,

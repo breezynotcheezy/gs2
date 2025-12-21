@@ -34,11 +34,7 @@ export async function POST() {
       return NextResponse.json({ ok: false, isPro: false, remaining: 0, error: 'Daily ingestion limit reached' }, { status: 200 })
     }
 
-    const updated = await prisma.dailyUsage.update({
-      where: { userId_day: { userId, day } },
-      data: { ingestions: { increment: 1 } },
-    })
-    const remaining = Math.max(0, cap - updated.ingestions)
+    const remaining = Math.max(0, cap - usage.ingestions)
     return NextResponse.json({ ok: true, isPro: false, remaining })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 })

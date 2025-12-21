@@ -10,6 +10,7 @@ export default function UserMenu() {
   const { data: session, status } = useSession()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const [me, setMe] = useState<{ isPro: boolean; remainingIngestions: number | null; usedToday: number | null; cap: number | null } | null>(null)
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -20,11 +21,32 @@ export default function UserMenu() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
+  useEffect(() => {
+    let timer: any
+    const load = async () => {
+      try {
+        const r = await fetch('/api/me')
+        const j = await r.json().catch(() => ({}))
+        if (r.ok && j?.ok) setMe({ isPro: !!j.isPro, remainingIngestions: j.remainingIngestions ?? null, usedToday: j.usedToday ?? null, cap: j.cap ?? null })
+      } catch {}
+    }
+    load()
+    const onVis = () => { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', onVis)
+    timer = setInterval(load, 30000)
+    return () => { document.removeEventListener('visibilitychange', onVis); if (timer) clearInterval(timer) }
+  }, [status])
+
   const avatar = session?.user?.image || ''
   const name = session?.user?.name || session?.user?.email || 'User'
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative flex items-center gap-2" ref={ref}>
+      {session?.user && (
+        <div className="px-2 py-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-200 text-[11px] font-mono select-none">
+          {me?.isPro ? '∞ ingestions' : typeof me?.remainingIngestions === 'number' && typeof me?.cap === 'number' ? `${me.cap - me.remainingIngestions}/${me.cap}` : '—'}
+        </div>
+      )}
       <Button
         onClick={() => setOpen(v => !v)}
         className="h-10 w-10 rounded-full p-0

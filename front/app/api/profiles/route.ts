@@ -22,6 +22,14 @@ export async function POST(request: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  const u = await prisma.user.findUnique({ where: { id: session.user.id }, select: { isPro: true } })
+  const isPro = !!u?.isPro
+  if (!isPro) {
+    const count = await prisma.profile.count({ where: { userId: session.user.id } })
+    if (count >= 5) {
+      return NextResponse.json({ error: 'Profile limit reached' }, { status: 400 })
+    }
+  }
   const body = await request.json().catch(() => ({})) as any
   const name = String(body?.name || '').trim() || 'Untitled'
   const plays = Array.isArray(body?.plays) ? body.plays : []

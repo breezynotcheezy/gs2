@@ -18,6 +18,13 @@ export function clearCurrentProfile(): number {
   const removed = cur.plays.length
   cur.plays = []
   saveProfiles(s)
+  try {
+    void fetch(`/api/profiles/${encodeURIComponent(cur.id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plays: cur.plays }),
+    })
+  } catch {}
   return removed
 }
 
@@ -33,6 +40,15 @@ export function removeBatterFromCurrentProfileByKey(key: string): number {
   })
   const removed = before - cur.plays.length
   if (removed > 0) saveProfiles(s)
+  if (removed > 0) {
+    try {
+      void fetch(`/api/profiles/${encodeURIComponent(cur.id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ plays: cur.plays }),
+      })
+    } catch {}
+  }
   return removed
 }
 export type Profile = {
@@ -93,6 +109,23 @@ export function createProfile(name: string): Profile {
   s.profiles.unshift(p)
   s.currentId = p.id
   saveProfiles(s)
+  try {
+    void fetch('/api/profiles', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: p.name, plays: [] }),
+    }).then(r => r.json()).then(j => {
+      if (j && j.profile && j.profile.id) {
+        const s2 = loadProfiles()
+        const idx = s2.profiles.findIndex(x => x.id === p.id)
+        if (idx >= 0) {
+          s2.profiles[idx].id = j.profile.id
+          s2.currentId = j.profile.id
+          saveProfiles(s2)
+        }
+      }
+    }).catch(() => {})
+  } catch {}
   return p
 }
 
@@ -101,6 +134,7 @@ export function deleteProfile(id: string) {
   s.profiles = s.profiles.filter(p => p.id !== id)
   if (s.currentId === id) s.currentId = s.profiles[0]?.id || null
   saveProfiles(s)
+  try { void fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' }) } catch {}
 }
 
 export function addPlaysToCurrentProfile(plays: StoredPA[]): { added: number } {
@@ -122,6 +156,15 @@ export function addPlaysToCurrentProfile(plays: StoredPA[]): { added: number } {
     if (cKey) cSet.add(cKey)
   }
   saveProfiles(s)
+  if (added > 0) {
+    try {
+      void fetch(`/api/profiles/${encodeURIComponent(current.id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ plays: current.plays }),
+      })
+    } catch {}
+  }
   return { added }
 }
 
