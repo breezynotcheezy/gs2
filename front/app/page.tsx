@@ -816,7 +816,7 @@ export default function GreenSeamDashboard() {
     setOutput("(no output yet)")
     setPasteDraft("")
     setPasteChunks([])
-    setFile(null)
+    setFile(null) 
     setMinPA(0)
     setResultFilter("all")
     try { clearCurrentProfile() } catch {}
