@@ -888,8 +888,11 @@ export default function GreenSeamDashboard() {
                       const me = await fetch('/api/me').then(r => r.json()).catch(() => ({ isPro: false }))
                       const isPro = !!me?.isPro
                       if (!isPro) {
-                        const s = loadProfiles()
-                        if (Array.isArray(s?.profiles) && s.profiles.length >= 5) {
+                        // Get authoritative profile count from server
+                        const profilesRes = await fetch('/api/profiles').catch(() => null)
+                        const profilesData = profilesRes ? await profilesRes.json().catch(() => ({ profiles: [] })) : { profiles: [] }
+                        const serverProfileCount = Array.isArray(profilesData?.profiles) ? profilesData.profiles.length : 0
+                        if (serverProfileCount >= 5) {
                           setStatus('Profile limit reached (5 for free users). Upgrade to Pro for unlimited.')
                           return
                         }

@@ -15,6 +15,7 @@ export default function ProfilesHistoryPage() {
   const [newName, setNewName] = useState('')
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [currentId, setCurrentId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   const refresh = () => {
     const s = loadProfiles()
@@ -22,25 +23,25 @@ export default function ProfilesHistoryPage() {
     setCurrentId(s.currentId)
   }
 
-  useEffect(() => { refresh() }, [storeVersion])
-
-  useEffect(() => {
-    const sync = async () => {
-      try {
+  // Always sync from server for authoritative data
+  const syncFromServer = async () => {
+    try {
+      setLoading(true)
+      const r = await fetch('/api/profiles')
+      const j = await r.json().catch(() => ({}))
+      if (r.ok && Array.isArray(j?.profiles)) {
+        const mapped = j.profiles.map((p: any) => ({ id: String(p.id), name: String(p.name || 'Untitled'), createdAt: (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()), plays: Array.isArray(p.plays) ? p.plays : [] }))
+        setProfiles(mapped)
+        // Update localStorage with server data for consistency
         const s = loadProfiles()
-        if (Array.isArray(s?.profiles) && s.profiles.length > 0) return
-        const r = await fetch('/api/profiles')
-        const j = await r.json().catch(() => ({}))
-        if (r.ok && Array.isArray(j?.profiles)) {
-          const mapped = j.profiles.map((p: any) => ({ id: String(p.id), name: String(p.name || 'Untitled'), createdAt: (p.createdAt ? new Date(p.createdAt).getTime() : Date.now()), plays: Array.isArray(p.plays) ? p.plays : [] }))
-          const next = { version: 1 as const, currentId: mapped[0]?.id || null, profiles: mapped }
-          saveProfiles(next)
-          setStoreVersion(v => v + 1)
-        }
-      } catch {}
-    }
-    void sync()
-  }, [])
+        s.profiles = mapped
+        saveProfiles(s)
+      }
+    } catch {}
+    setLoading(false)
+  }
+
+  useEffect(() => { syncFromServer() }, [storeVersion])
 
   const current = useMemo(() => getCurrentProfile(loadProfiles()) || null, [storeVersion])
 
@@ -71,8 +72,11 @@ export default function ProfilesHistoryPage() {
                         const me = await fetch('/api/me').then(r => r.json()).catch(() => ({ isPro: false }))
                         const isPro = !!me?.isPro
                         if (!isPro) {
-                          const s = loadProfiles()
-                          if (Array.isArray(s?.profiles) && s.profiles.length >= 5) {
+                          // Get authoritative profile count from server
+                          const profilesRes = await fetch('/api/profiles').catch(() => null)
+                          const profilesData = profilesRes ? await profilesRes.json().catch(() => ({ profiles: [] })) : { profiles: [] }
+                          const serverProfileCount = Array.isArray(profilesData?.profiles) ? profilesData.profiles.length : 0
+                          if (serverProfileCount >= 5) {
                             alert('Profile limit reached (5 for free users). Upgrade to Pro for unlimited.')
                             return
                           }
@@ -107,11 +111,14 @@ export default function ProfilesHistoryPage() {
             <CardTitle className="text-amber-100 font-mono">Your Profiles</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {profiles.length === 0 && (
-                <div className="text-sm text-gray-400 font-mono">No profiles yet. Create one above.</div>
-              )}
-              {profiles.map(p => (
+            {loading ? (
+              <div className="text-sm text-gray-400 font-mono">Loading profiles...</div>
+            ) : (
+              <div className="space-y-2">
+                {profiles.length === 0 && (
+                  <div className="text-sm text-gray-400 font-mono">No profiles yet. Create one above.</div>
+                )}
+                {profiles.map(p => (
                 <div key={p.id} className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 p-3 rounded-md border border-amber-500/20 bg-black/40">
                   <div className="min-w-0">
                     <div className="text-amber-100 font-mono truncate text-sm font-semibold">{p.name}</div>
@@ -145,7 +152,8 @@ export default function ProfilesHistoryPage() {
                   </div>
                 </div>
               ))}
-            </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>
