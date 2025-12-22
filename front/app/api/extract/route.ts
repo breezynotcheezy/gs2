@@ -118,7 +118,12 @@ export async function POST(req: NextRequest) {
     const canonMode: "det" | "llm" | undefined = deterministic ? "det" : undefined;
     const needsLLM = !(canonMode === "det" && effectiveSegMode === "det");
     if (needsLLM && !process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ ok: false, error: "Missing OPENAI_API_KEY in env" }, { status: 500 });
+      return NextResponse.json({ ok: false, error: "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable." }, { status: 500 });
+    }
+
+    // Check if the API key is a placeholder value
+    if (needsLLM && process.env.OPENAI_API_KEY!.includes('REPLACE_WITH')) {
+      return NextResponse.json({ ok: false, error: "OpenAI API key is using placeholder value. Please replace with a real API key." }, { status: 500 });
     }
 
     // Apply runtime overrides so core honors client tuning (speeds up large-file LLM parsing)
@@ -154,6 +159,31 @@ export async function POST(req: NextRequest) {
     }
     
     if (!result.segments || !Array.isArray(result.segments) || result.segments.length === 0) {
+      // If LLM processing failed and we weren't already using deterministic mode, try fallback
+      if (!deterministic && needsLLM) {
+        console.warn("LLM segmentation failed, attempting deterministic fallback")
+        try {
+          const fallbackResult = await canonicalizeGameText(text, ctx, {
+            model,
+            segmentationMode: "det",
+            canonMode: "det",
+            maxRetries: 1,
+            concurrency: 1,
+            transportTimeoutMs: timeoutMs,
+            verbose,
+            segmentationRetries: 1,
+            segmentationConcurrency: 1,
+          });
+          
+          if (fallbackResult?.segments && Array.isArray(fallbackResult.segments) && fallbackResult.segments.length > 0) {
+            setCached(cacheKey, fallbackResult);
+            return NextResponse.json(fallbackResult, { status: 200 });
+          }
+        } catch (fallbackError) {
+          console.error("Deterministic fallback also failed:", fallbackError);
+        }
+      }
+      
       // Provide more detailed error for debugging
       const errorMsg = `No segments returned from segmentation. Mode: ${effectiveSegMode}, Model: ${model}, Text length: ${text.length}`
       console.error(errorMsg, { result, textPreview: text.substring(0, 200) })
