@@ -148,6 +148,18 @@ export async function POST(req: NextRequest) {
       segmentationConcurrency: segConc,
     });
 
+    // Validate result before caching and returning
+    if (!result) {
+      throw new Error("Segmentation returned null/undefined result")
+    }
+    
+    if (!result.segments || !Array.isArray(result.segments) || result.segments.length === 0) {
+      // Provide more detailed error for debugging
+      const errorMsg = `No segments returned from segmentation. Mode: ${effectiveSegMode}, Model: ${model}, Text length: ${text.length}`
+      console.error(errorMsg, { result, textPreview: text.substring(0, 200) })
+      throw new Error(errorMsg)
+    }
+
     setCached(cacheKey, result);
     return NextResponse.json(result, { status: 200 });
   } catch (e: any) {
